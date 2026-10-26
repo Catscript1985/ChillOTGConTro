@@ -28,7 +28,8 @@ class KeyMappingService : AccessibilityService() {
     override fun onKeyEvent(event: KeyEvent): Boolean {
         enabled = getSharedPreferences("runtime", MODE_PRIVATE).getBoolean("mapping_enabled", false)
         if (!enabled || event.action != KeyEvent.ACTION_DOWN || event.repeatCount > 0) return false
-        val mapping = MappingProfile.load(this).firstOrNull { it.keyCode == event.keyCode } ?: return false
+        val profile = getSharedPreferences("profiles", MODE_PRIVATE).getString("selected", "Mặc định") ?: "Mặc định"
+        val mapping = MappingProfile.load(this, profile).firstOrNull { it.keyCode == event.keyCode } ?: return false
         tap(mapping.xRatio * screenW, mapping.yRatio * screenH)
         return true
     }

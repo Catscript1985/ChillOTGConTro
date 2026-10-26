@@ -42,9 +42,9 @@ class MainActivity : ComponentActivity() {
 private fun ChillHome() {
     val context = LocalContext.current
     var devices by remember { mutableStateOf(UsbDevices.list(context)) }
-    var mappings by remember { mutableStateOf(MappingProfile.load(context)) }
-    var enabled by remember { mutableStateOf(context.getSharedPreferences("runtime", Context.MODE_PRIVATE).getBoolean("mapping_enabled", false)) }
     var profile by remember { mutableStateOf(context.getSharedPreferences("profiles", Context.MODE_PRIVATE).getString("selected", "Mặc định") ?: "Mặc định") }
+    var mappings by remember { mutableStateOf(MappingProfile.load(context, profile)) }
+    var enabled by remember { mutableStateOf(context.getSharedPreferences("runtime", Context.MODE_PRIVATE).getBoolean("mapping_enabled", false)) }
     var showGuide by remember { mutableStateOf(false) }
 
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 18.dp), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(top = 28.dp, bottom = 32.dp)) {
@@ -82,8 +82,19 @@ private fun ChillHome() {
                     enabled = !enabled
                     context.getSharedPreferences("runtime", Context.MODE_PRIVATE).edit().putBoolean("mapping_enabled", enabled).apply()
                 }, modifier = Modifier.fillMaxWidth()) { Text(if (enabled) "Tắt ánh xạ" else "Bật ánh xạ") }
-                mappings.forEach { m -> Text("${m.label}: x ${(m.xRatio * 100).toInt()}%, y ${(m.yRatio * 100).toInt()}%", color = Color.White) }
-                OutlinedButton(onClick = { mappings = MappingProfile.defaults(); MappingProfile.save(context, mappings) }, modifier = Modifier.fillMaxWidth()) { Text("Khôi phục WASD mặc định") }
+                mappings.forEachIndexed { index, m ->
+                    Text("${m.label} · X ${(m.xRatio * 100).toInt()}%", color = Color.White)
+                    Slider(value = m.xRatio, onValueChange = { value ->
+                        val next = mappings.toMutableList().also { it[index] = m.copy(xRatio = value) }
+                        mappings = next; MappingProfile.save(context, next, profile)
+                    })
+                    Text("${m.label} · Y ${(m.yRatio * 100).toInt()}%", color = Color.White)
+                    Slider(value = m.yRatio, onValueChange = { value ->
+                        val next = mappings.toMutableList().also { it[index] = m.copy(yRatio = value) }
+                        mappings = next; MappingProfile.save(context, next, profile)
+                    })
+                }
+                OutlinedButton(onClick = { mappings = MappingProfile.defaults(); MappingProfile.save(context, mappings, profile) }, modifier = Modifier.fillMaxWidth()) { Text("Khôi phục WASD mặc định") }
                 Text("Lưu ý: ứng dụng/game có thể chặn lọc phím hoặc chạm tổng hợp. Thao tác nhấn giữ, chuột và camera chưa được bảo đảm.", color = Color(0xFFFFC56B), fontSize = 12.sp)
             }
         }
@@ -92,7 +103,8 @@ private fun ChillHome() {
                 Text("Hồ sơ hiện tại: $profile", color = Teal, fontWeight = FontWeight.Bold)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("Mặc định", "Bắn súng", "MOBA").forEach { name -> OutlinedButton(onClick = {
-                        profile = name; context.getSharedPreferences("profiles", Context.MODE_PRIVATE).edit().putString("selected", name).apply()
+                        profile = name; mappings = MappingProfile.load(context, name)
+                        context.getSharedPreferences("profiles", Context.MODE_PRIVATE).edit().putString("selected", name).apply()
                     }) { Text(name) } }
                 }
                 Text("Bản đầu lưu bộ phím trên thiết bị; chưa tự nhận diện ứng dụng/game đang mở.", color = Color.LightGray, fontSize = 12.sp)

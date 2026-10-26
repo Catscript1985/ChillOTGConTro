@@ -7,13 +7,15 @@ import org.json.JSONObject
 
 data class KeyMapping(val keyCode: Int, val xRatio: Float, val yRatio: Float, val label: String)
 
-/** Lưu các điểm ánh xạ tương đối theo kích thước màn hình, tránh phụ thuộc độ phân giải cụ thể. */
+/** Lưu tọa độ theo tỷ lệ màn hình và theo từng hồ sơ trò chơi. */
 object MappingProfile {
-    private const val PREF = "mapping_profile"
+    private const val PREF = "mapping_profile_"
     private const val KEY_MAPS = "maps"
 
-    fun load(context: Context): List<KeyMapping> {
-        val raw = context.getSharedPreferences(PREF, Context.MODE_PRIVATE).getString(KEY_MAPS, null)
+    private fun prefsName(profile: String) = PREF + profile.lowercase().replace(Regex("[^a-z0-9_-]"), "_")
+
+    fun load(context: Context, profile: String = "Mặc định"): List<KeyMapping> {
+        val raw = context.getSharedPreferences(prefsName(profile), Context.MODE_PRIVATE).getString(KEY_MAPS, null)
         if (raw == null) return defaults()
         return runCatching {
             val arr = JSONArray(raw)
@@ -23,10 +25,10 @@ object MappingProfile {
         }.getOrElse { defaults() }
     }
 
-    fun save(context: Context, mappings: List<KeyMapping>) {
+    fun save(context: Context, mappings: List<KeyMapping>, profile: String = "Mặc định") {
         val arr = JSONArray()
         mappings.forEach { m -> arr.put(JSONObject().put("key", m.keyCode).put("x", m.xRatio.coerceIn(0f, 1f)).put("y", m.yRatio.coerceIn(0f, 1f)).put("label", m.label)) }
-        context.getSharedPreferences(PREF, Context.MODE_PRIVATE).edit().putString(KEY_MAPS, arr.toString()).apply()
+        context.getSharedPreferences(prefsName(profile), Context.MODE_PRIVATE).edit().putString(KEY_MAPS, arr.toString()).apply()
     }
 
     fun defaults() = listOf(

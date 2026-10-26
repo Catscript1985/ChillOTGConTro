@@ -5,7 +5,7 @@
 ## Tình trạng bản đầu
 
 - Giao diện tiếng Việt, Material 3, trạng thái thiết bị và hướng dẫn cấp quyền.
-- Cấu hình phím mẫu WASD + SPACE, lưu cục bộ.
+- Cấu hình phím mẫu WASD + SPACE, chỉnh tọa độ chạm X/Y bằng thanh trượt và lưu riêng theo ba profile cục bộ.
 - Accessibility Service lọc một số sự kiện phím và gửi tap đơn tại vị trí tương đối trên màn hình.
 - Nút nổi có thể kéo, mở menu bật/tắt nhanh.
 - Hồ sơ cục bộ mẫu và hướng dẫn ghép nối Wi‑Fi ADB qua cài đặt Android.
