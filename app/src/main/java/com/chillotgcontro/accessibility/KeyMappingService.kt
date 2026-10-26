@@ -13,7 +13,6 @@ import com.chillotgcontro.profiles.MappingProfile
  */
 class KeyMappingService : AccessibilityService() {
     private var enabled = false
-    private var cameraMode = false
     private var screenW = 1
     private var screenH = 1
 
@@ -29,11 +28,6 @@ class KeyMappingService : AccessibilityService() {
     override fun onKeyEvent(event: KeyEvent): Boolean {
         enabled = getSharedPreferences("runtime", MODE_PRIVATE).getBoolean("mapping_enabled", false)
         if (!enabled || event.action != KeyEvent.ACTION_DOWN || event.repeatCount > 0) return false
-        if (event.keyCode == KeyEvent.KEYCODE_F8) {
-            cameraMode = !cameraMode
-            return true
-        }
-        if (cameraMode) return false
         val mapping = MappingProfile.load(this).firstOrNull { it.keyCode == event.keyCode } ?: return false
         tap(mapping.xRatio * screenW, mapping.yRatio * screenH)
         return true

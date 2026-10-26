@@ -29,12 +29,12 @@ import com.chillotgcontro.profiles.MappingProfile
 
 private val Ink = Color(0xFF101820)
 private val Teal = Color(0xFF55D6BE)
-private val Card = Color(0xFF1A2A32)
+private val CardBg = Color(0xFF1A2A32)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { MaterialTheme(colorScheme = darkColorScheme(primary = Teal, background = Ink, surface = Card)) { ChillHome() } }
+        setContent { MaterialTheme(colorScheme = darkColorScheme(primary = Teal, background = Ink, surface = CardBg)) { ChillHome() } }
     }
 }
 
@@ -116,7 +116,7 @@ private fun ChillHome() {
 
 @Composable
 private fun Section(title: String, content: @Composable ColumnScope.() -> Unit) {
-    Card(colors = CardDefaults.cardColors(containerColor = Card), shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
+    Card(colors = CardDefaults.cardColors(containerColor = CardBg), shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(title, color = Teal, fontWeight = FontWeight.Bold, fontSize = 14.sp)
             content()
