@@ -18,7 +18,7 @@ Android không cho ứng dụng thông thường điều khiển `adbd`/tự gh�
 
 ### GitHub Actions (khuyến nghị)
 
-Push mã lên GitHub. Workflow `Android APK` chạy `assembleDebug`; trong GitHub mở **Actions → Android APK → workflow run → Artifacts** để tải `ChillOTGConTro-debug-apk`. APK được build là bản debug, chưa ký phát hành.
+Push mã lên GitHub. Workflow `Android APK` chạy `assembleDebug`; trong GitHub mở **Actions → Android APK → workflow run → Artifacts** để tải `ChillOTGConTro-apk`, bên trong là `ChillOTGConTro.apk`. APK Actions là bản debug.
 
 ### Máy có Android SDK
 
@@ -28,7 +28,7 @@ Cài JDK 17+, Android SDK Platform 35 và Build Tools 35.0.0, sau đó tại th�
 ./gradlew assembleDebug
 ```
 
-APK: `app/build/outputs/apk/debug/app-debug.apk`.
+APK debug: `app/build/outputs/apk/debug/app-debug.apk`.
 
 Cài qua USB debugging:
 
@@ -37,6 +37,12 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
 Hoặc chép APK vào điện thoại, mở tệp và cho phép cài ứng dụng từ nguồn đó. Bản debug có thể cần gỡ trước khi cài bản ký bằng khóa khác.
+
+## Cài đặt và khắc phục “Ứng dụng chưa được cài đặt”
+
+Tải đủ tệp APK, kiểm tra dung lượng, mở bằng trình quản lý tệp và cho phép trình duyệt/trình quản lý tệp **Cài ứng dụng không rõ nguồn gốc**. Điện thoại cần Android 8.0 trở lên và còn đủ bộ nhớ.
+
+Nếu trước đó đã cài APK debug từ GitHub Actions rồi Android từ chối cập nhật, nguyên nhân thường là chữ ký khác giữa các lần build. Bản phát hành `v0.1.1` dùng khóa ổn định riêng; để chuyển từ bản debug cũ sang bản này, gỡ ChillOTGConTro cũ rồi cài lại. Gỡ ứng dụng có thể xóa hồ sơ lưu cục bộ. Các bản release tiếp theo phải dùng đúng khóa phát hành đó.
 
 ## Thiết lập trên điện thoại
 
@@ -48,4 +54,4 @@ Hoặc chép APK vào điện thoại, mở tệp và cho phép cài ứng dụn
 
 ## Tạo bản release
 
-Release cần keystore riêng và ký APK/AAB. Không commit keystore hay mật khẩu vào repository. Bản này chỉ tạo debug APK; chưa cấu hình ký phát hành.
+Release cần keystore riêng và ký APK/AAB. Không commit keystore hay mật khẩu vào repository.
