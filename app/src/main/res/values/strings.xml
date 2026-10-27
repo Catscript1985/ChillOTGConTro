@@ -1,4 +1,3 @@
 <resources>
     <string name="app_name">ChillOTGConTro</string>
-    <string name="accessibility_description">Nhận phím vật lý khi bạn bật dịch vụ để ánh xạ thành thao tác chạm tại vị trí bạn chọn. Không đọc nội dung màn hình hoặc gửi phím lên máy chủ.</string>
 </resources>

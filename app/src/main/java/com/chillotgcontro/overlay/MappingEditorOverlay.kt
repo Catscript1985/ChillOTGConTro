@@ -18,9 +18,10 @@ import android.widget.TextView
 import android.widget.Toast
 import com.chillotgcontro.profiles.KeyMapping
 import com.chillotgcontro.profiles.MappingProfile
+import com.chillotgcontro.adb.AdbInputMappingService
 import kotlin.math.abs
 
-/** Lightweight on-game editor. Key events are captured by the enabled AccessibilityService. */
+/** Lightweight on-game editor. Key presses are captured by the user-paired Wireless ADB monitor. */
 class MappingEditorOverlay(private val service: Service, private val onClose: () -> Unit) {
     private val wm = service.getSystemService(Service.WINDOW_SERVICE) as WindowManager
     private val runtime by lazy { service.getSharedPreferences("runtime", Service.MODE_PRIVATE) }
@@ -197,8 +198,12 @@ class MappingEditorOverlay(private val service: Service, private val onClose: ()
     private fun close() {
         val view = root ?: return
         handler.removeCallbacks(refresh)
-        runtime.edit().putString("editor_state", "idle").putBoolean("mapping_enabled", previousMappingEnabled).apply()
+        runtime.edit().putString("editor_state", "idle").putBoolean("mapping_enabled", previousMappingEnabled)
+            .putBoolean("adb_mode", previousMappingEnabled && service.getSharedPreferences("adb_config", Service.MODE_PRIVATE).getBoolean("connected", false)).apply()
         runCatching { wm.removeView(view) }
+        if (!previousMappingEnabled && service.getSharedPreferences("adb_config", Service.MODE_PRIVATE).getBoolean("connected", false)) {
+            AdbInputMappingService.stop(service)
+        }
         root = null; markerLayer = null; statusText = null; selectedIndex = null; waitingForPosition = false
         onClose()
     }

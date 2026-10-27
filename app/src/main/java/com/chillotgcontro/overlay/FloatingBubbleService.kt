@@ -1,6 +1,5 @@
 package com.chillotgcontro.overlay
 
-import android.accessibilityservice.AccessibilityServiceInfo
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -16,12 +15,12 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
-import android.view.accessibility.AccessibilityManager
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import com.chillotgcontro.MainActivity
+import com.chillotgcontro.adb.AdbInputMappingService
 
 class FloatingBubbleService : Service() {
     private lateinit var wm: WindowManager
@@ -81,11 +80,19 @@ class FloatingBubbleService : Service() {
         box.addView(panelButton("⏻  Bật / tắt ánh xạ") {
             val prefs = getSharedPreferences("runtime", MODE_PRIVATE)
             val next = !prefs.getBoolean("mapping_enabled", false)
-            if (next && !accessibilityReady()) {
-                Toast.makeText(this, "Bật dịch vụ Trợ năng ChillOTG trước nhé", Toast.LENGTH_LONG).show()
-                openAccessibilitySetup()
+            val adbReady = getSharedPreferences("adb_config", MODE_PRIVATE).getBoolean("connected", false)
+            if (next && adbReady) {
+                prefs.edit().putBoolean("mapping_enabled", true).putBoolean("adb_mode", true).apply()
+                AdbInputMappingService.start(this)
+                Toast.makeText(this, "Ánh xạ Wi‑Fi ADB đã bật", Toast.LENGTH_SHORT).show()
+                showPanel()
+            } else if (next) {
+                Toast.makeText(this, "Ghép Wi‑Fi ADB trong Cài đặt trước khi bật ánh xạ", Toast.LENGTH_LONG).show()
+                startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                dismissPanel()
             } else {
-                prefs.edit().putBoolean("mapping_enabled", next).apply()
+                prefs.edit().putBoolean("mapping_enabled", false).putBoolean("adb_mode", false).apply()
+                AdbInputMappingService.stop(this)
                 Toast.makeText(this, if (next) "Ánh xạ đã bật" else "Ánh xạ đã tắt", Toast.LENGTH_SHORT).show()
                 showPanel()
             }
@@ -110,26 +117,17 @@ class FloatingBubbleService : Service() {
             startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             return
         }
-        if (!accessibilityReady()) {
-            Toast.makeText(this, "Cần bật Trợ năng ChillOTG để nhận phím OTG trong editor", Toast.LENGTH_LONG).show()
-            openAccessibilitySetup()
+        val adbReady = getSharedPreferences("adb_config", MODE_PRIVATE).getBoolean("connected", false)
+        if (adbReady) {
+            getSharedPreferences("runtime", MODE_PRIVATE).edit().putBoolean("adb_mode", true).apply()
+            AdbInputMappingService.start(this)
+        } else {
+            Toast.makeText(this, "Ghép Wi‑Fi ADB trong Cài đặt để nhận phím trong editor", Toast.LENGTH_LONG).show()
+            startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             return
         }
         editor = MappingEditorOverlay(this) { editor = null }
         editor?.show(mode)
-    }
-
-    private fun accessibilityReady(): Boolean {
-        val manager = getSystemService(ACCESSIBILITY_SERVICE) as AccessibilityManager
-        return manager.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK).any {
-            it.resolveInfo.serviceInfo.packageName == packageName && it.resolveInfo.serviceInfo.name.endsWith("KeyMappingService")
-        }
-    }
-
-    private fun openAccessibilitySetup() {
-        val consented = getSharedPreferences("privacy", MODE_PRIVATE).getBoolean("accessibility_disclosure_accepted", false)
-        val intent = if (consented) Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS) else Intent(this, MainActivity::class.java)
-        startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
     private fun panelButton(label: String, action: () -> Unit) = Button(this).apply {

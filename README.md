@@ -1,35 +1,39 @@
 # ChillOTGConTro
 
-Ứng dụng Android Kotlin (API 23+) hỗ trợ dò USB HID, quản lý thư viện game, lưu cấu hình phím riêng và ánh xạ phím thành chạm qua Accessibility Service.
+Ứng dụng Android Kotlin (API 23+) để quản lý game, nhận bàn phím/tay cầm qua Wireless debugging (ADB), và ánh xạ phím sang thao tác chạm trong game. Bản 0.1.5 **không khai báo AccessibilityService**, nên không yêu cầu bật quyền Trợ năng.
 
 ## Tính năng
 
-- Giao diện game hub dark-neon làm lại toàn bộ: hero **Chơi ngay**, thư viện game có icon, thẻ trạng thái OTG và thanh điều hướng **Trò chơi / Điều khiển / Cài đặt**.
-- Tab Điều khiển gom game đang chọn, trạng thái ánh xạ, danh sách nút phím và thao tác vào game để mở editor nổi; tab Cài đặt tách riêng quyền/OTG.
-- Nút quét/kết nối OTG chỉ hiển thị USB HID thật; USB tự nhận bởi Android, không cần ghép đôi kiểu Bluetooth.
-- Thêm/bỏ nhiều app/game có màn hình launcher vào thư viện, chọn một game active; lưu profile riêng theo package và nút **Chơi ngay** mở game.
-- Cấu hình phím mẫu WASD + SPACE; kéo điểm chạm trực tiếp trong editor nổi và profile được lưu riêng cho từng game.
-- Chọn **Gán phím** rồi nhấn phím trên bàn phím OTG để thay phím gán.
-- Trong game, bong bóng mở panel có **Thêm nút phím**, **Sửa/kéo nút**, **Đổi phím**, **Xóa** và **Ẩn bong bóng**.
-- Editor phủ lên game: **+ Thêm nút** → chạm điểm trên màn hình → nhấn phím OTG; chạm nút để chọn, kéo để di chuyển, hoặc đổi/xóa.
-- Accessibility Service lọc một số sự kiện phím và gửi tap đơn tại vị trí tương đối trên màn hình.
-- Nút nổi có thể kéo; trang chính cũng có nút bật lại sau khi ẩn.
-- Trước khi mở Cài đặt Trợ năng, app hiển thị disclosure riêng, yêu cầu người dùng xác nhận và mô tả dữ liệu được xử lý.
-- Hồ sơ cục bộ mẫu và hướng dẫn ghép nối Wi‑Fi ADB qua cài đặt Android.
+- Game hub dark-neon với thư viện game, chọn game đã cài và nút mở game.
+- Hồ sơ phím riêng theo game; editor nổi để thêm, kéo, đổi và xóa điểm chạm.
+- Ghép nối Wireless ADB ngay trong app: nhập IP và hai cổng, gửi notification có ô nhập mã pairing 6 số, sau đó thử kết nối ADB.
+- Chế độ ánh xạ đọc sự kiện phím HID qua ADB `getevent`, rồi gửi `input tap` tại tọa độ profile; chạy dưới foreground notification do người dùng bật.
+- Bong bóng nổi có menu thêm/sửa nút, bật/tắt ánh xạ và ẩn bong bóng; cài đặt có nút ngắt phiên ADB của app.
+- USB OTG/HID được Android tự nhận; app quét để hiển thị thiết bị.
+
+## Cách ghép nối và dùng
+
+1. Trên Android 11 trở lên, kết nối điện thoại với Wi‑Fi tin cậy, mở **Tùy chọn nhà phát triển → Wireless debugging** và bật tính năng.
+2. Trong ChillOTGConTro → **Cài đặt → Ghép nối Wi‑Fi ADB**, nhập IP của chính điện thoại, cổng pairing trên màn hình **Pair device with pairing code**, và cổng Wireless debugging chính. Hai cổng thường khác nhau và có thể thay đổi.
+3. Cho phép thông báo nếu Android hỏi; bấm **Gửi thông báo nhập mã**, mở rộng notification và nhập mã 6 chữ số đang hiện trong Android.
+4. Chờ thông báo báo đã ghép đôi/kết nối. Vào **Trò chơi**, chọn game, cấp quyền cửa sổ nổi và bấm **Chơi ngay**.
+5. Trong game, chạm bong bóng G → **Thêm nút phím** → **+ Thêm nút** → chạm vị trí → bấm phím OTG. Chạm/ kéo nút để chỉnh; bật ánh xạ để dùng.
+6. Muốn dừng, tắt ánh xạ trong menu nổi hoặc app. **Ngắt phiên ADB của ChillOTG** đóng kết nối của ứng dụng; Android vẫn có thể giữ thiết bị trong danh sách đã ghép đôi. Muốn thu hồi hoàn toàn, tắt Wireless debugging hoặc xóa thiết bị ghép đôi trong Developer options.
 
 ## Giới hạn quan trọng
 
-Android không cho ứng dụng thông thường điều khiển `adbd`/tự ghép nối Wi‑Fi ADB, đưa con trỏ hệ thống về giữa màn hình hoặc bảo đảm Accessibility Service nhận phím/chạm trong mọi game. Game có thể chặn sự kiện tổng hợp hoặc lọc phím. Bản hiện tại chưa hỗ trợ giữ chạm liên tục, ánh xạ chuột đầy đủ, nhập/xuất profile, hay camera mouse kiểu FPS. Hãy thử trên thiết bị và trò chơi bạn sở hữu, kiểm tra điều khoản trò chơi và chỉ bật Accessibility sau khi đọc phần mô tả quyền.
+ADB pairing chỉ hỗ trợ Android có Wireless debugging (thường Android 11+). Cổng và IP có thể đổi sau khi Wi‑Fi/ngày khởi động thay đổi. Một số hãng/ROM không cho tiến trình `shell` đọc `getevent`; khi đó app sẽ báo lỗi và tắt mapping. Android thông thường không cung cấp API công khai khác để đọc/chặn phím toàn hệ thống nếu không dùng Accessibility, quyền hệ thống hoặc root. Bản này cố ý không xin quyền Trợ năng.
 
-## Biên dịch APK
+Phím vật lý gốc có thể vẫn được game nhận song song với tap tổng hợp; một số game chặn thao tác chạm tổng hợp hoặc không tương thích overlay. Tính năng hiện tại gửi tap đơn, chưa hỗ trợ giữ chạm, ánh xạ chuột/camera FPS, hay đảm bảo hoạt động với mọi game/thiết bị. Chỉ dùng trên thiết bị/game bạn có quyền sử dụng và tuân theo điều khoản của game.
 
-### GitHub Actions (khuyến nghị)
+## Cài đặt và cập nhật APK
 
-Push mã lên GitHub. Workflow `Android APK` chạy `assembleDebug`; trong GitHub mở **Actions → Android APK → workflow run → Artifacts** để tải `ChillOTGConTro-debug-apk`, bên trong là `ChillOTGConTro-debug.apk`. Đây là bản debug ký tạm; để cài/cập nhật ổn định, dùng APK signed ở GitHub Release.
+- Bản phát hành ổn định: tải **ChillOTGConTro-v0.1.5.apk** từ GitHub Release `v0.1.5`.
+- Nếu đã cài bản release trước, bản mới giữ cùng `applicationId` và khóa ký ổn định để Android cập nhật đè. Không cài đè APK debug do GitHub Actions ký tạm; gỡ bản debug trước (việc gỡ có thể xóa dữ liệu cục bộ).
+- Nếu Android báo “Ứng dụng chưa được cài đặt”, kiểm tra dung lượng/tệp tải đủ, bật **Cài ứng dụng không rõ nguồn gốc** cho trình quản lý tệp đang mở APK, và gỡ bản cùng package có chữ ký khác. Thiết bị cần Android 6.0+.
+- Bản 0.1.5 đã bỏ khai báo AccessibilityService để không cần cấp quyền bị hạn chế. Google Play Protect vẫn có thể cảnh báo APK sideload vì đây là app chưa được phân phối/đánh giá qua Play; thay đổi này không bảo đảm mọi thiết bị đều bỏ cảnh báo. Không tắt Play Protect để né cảnh báo.
 
-### Máy có Android SDK
-
-Cài JDK 17+, Android SDK Platform 35 và Build Tools 35.0.0, sau đó tại thư mục dự án:
+## Build
 
 ```bash
 ./gradlew assembleDebug
@@ -37,34 +41,4 @@ Cài JDK 17+, Android SDK Platform 35 và Build Tools 35.0.0, sau đó tại th�
 
 APK debug: `app/build/outputs/apk/debug/app-debug.apk`.
 
-Bản release đã ký cần đặt khóa ngoài repository và truyền các biến `ANDROID_KEYSTORE_PATH`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_PASSWORD`, `ANDROID_KEY_ALIAS` (`chillotgcontro`), sau đó chạy `./gradlew assembleRelease`. Dùng đúng khóa đã phát hành để APK mới có thể cập nhật bản cũ.
-
-Cài qua USB debugging:
-
-```bash
-adb install -r app/build/outputs/apk/debug/app-debug.apk
-```
-
-Hoặc chép APK vào điện thoại, mở tệp và cho phép cài ứng dụng từ nguồn đó. Bản debug có thể cần gỡ trước khi cài bản ký bằng khóa khác.
-
-## Cài đặt và khắc phục “Ứng dụng chưa được cài đặt”
-
-Tải đủ tệp APK, kiểm tra dung lượng, mở bằng trình quản lý tệp và cho phép trình duyệt/trình quản lý tệp **Cài ứng dụng không rõ nguồn gốc**. Điện thoại cần Android 6.0 trở lên và còn đủ bộ nhớ.
-
-Nếu trước đó đã cài APK debug từ GitHub Actions rồi Android từ chối cập nhật, nguyên nhân thường là chữ ký khác giữa các lần build. Bản phát hành `v0.1.4` dùng cùng khóa ổn định của các release trước; để chuyển từ APK debug cũ, gỡ ChillOTGConTro cũ rồi cài lại. Gỡ ứng dụng có thể xóa hồ sơ lưu cục bộ. Các bản release tiếp theo phải dùng đúng khóa phát hành đó.
-
-## Thiết lập trên điện thoại
-
-1. Cài APK và mở ChillOTGConTro.
-2. Vào tab **Cài đặt** hoặc khung OTG trang **Trò chơi**, cắm bàn phím/chuột HID rồi bấm **Quét**. USB HID được Android tự nhận, không cần pairing.
-3. Tại trang **Trò chơi**, bấm **Thêm**, chọn game trong danh sách; chạm game để chọn và dùng **Chơi ngay** để mở.
-4. Đọc disclosure Trợ năng trong app, đồng ý nếu chấp thuận, rồi bật dịch vụ ChillOTG trong Cài đặt Android.
-5. Cấp quyền hiển thị trên ứng dụng khác và bật bong bóng.
-6. Mở game, chạm bong bóng → **Thêm nút phím** → **+ Thêm nút** → chạm điểm cần điều khiển → nhấn phím OTG. Chạm nút để chọn, kéo để di chuyển, hoặc dùng **Đổi phím/Xóa**.
-7. Bật ánh xạ trước khi chơi. Kết quả thay đổi theo phiên bản Android, thiết bị và game.
-
-Google Play Protect có thể chặn app cài từ nguồn ngoài Play nếu manifest khai báo Accessibility. Disclosure cải thiện minh bạch và là yêu cầu quan trọng khi phân phối qua Play, nhưng không đảm bảo bỏ cảnh báo khi sideload. Không tắt bảo vệ để né cảnh báo; nhà phát triển có thể yêu cầu Google xem xét/kháng nghị nếu tin là nhận diện nhầm.
-
-## Tạo bản release
-
-Keystore và mật khẩu ký là bí mật: giữ riêng, sao lưu an toàn và không commit/đăng lên GitHub. Nếu mất khóa, Android không cho cập nhật đè cùng package bằng khóa mới.
+Để ký Release, truyền các biến môi trường `ANDROID_KEYSTORE_PATH`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_PASSWORD`, `ANDROID_KEY_ALIAS` (mặc định `chillotgcontro`) và dùng đúng khóa riêng đã phát hành. Không commit keystore/mật khẩu lên repository. GitHub Actions tạo artifact **debug** để kiểm tra; dùng GitHub Release để cài/cập nhật bản stable.

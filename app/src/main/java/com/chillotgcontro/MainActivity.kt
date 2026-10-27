@@ -1,6 +1,7 @@
 package com.chillotgcontro
 
-import android.accessibilityservice.AccessibilityServiceInfo
+import android.Manifest
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -10,7 +11,6 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.view.KeyEvent as AndroidKeyEvent
-import android.view.accessibility.AccessibilityManager
 import android.widget.ImageView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -38,6 +38,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.chillotgcontro.connection.InstalledGame
 import com.chillotgcontro.connection.InstalledGames
 import com.chillotgcontro.connection.UsbDevices
+import com.chillotgcontro.adb.AdbPairingNotifications
+import com.chillotgcontro.adb.AdbInputMappingService
 import com.chillotgcontro.overlay.FloatingBubbleService
 import com.chillotgcontro.profiles.KeyMapping
 import com.chillotgcontro.profiles.MappingProfile
@@ -78,7 +80,6 @@ private fun ChillHome() {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("profiles", Context.MODE_PRIVATE) }
     val runtime = remember { context.getSharedPreferences("runtime", Context.MODE_PRIVATE) }
-    val privacyPrefs = remember { context.getSharedPreferences("privacy", Context.MODE_PRIVATE) }
 
     var tab by remember { mutableStateOf(HomeTab.GAMES) }
     var games by remember { mutableStateOf(InstalledGames.list(context)) }
@@ -94,12 +95,9 @@ private fun ChillHome() {
     var devices by remember { mutableStateOf(UsbDevices.list(context)) }
     var otgStatus by remember { mutableStateOf(if (devices.isEmpty()) "Chưa kết nối USB HID" else "Đã thấy ${devices.size} thiết bị OTG") }
     var mappingEnabled by remember { mutableStateOf(runtime.getBoolean("mapping_enabled", false)) }
-    var accessibilityOn by remember { mutableStateOf(isMappingAccessibilityEnabled(context)) }
+    var adbConnected by remember { mutableStateOf(context.getSharedPreferences("adb_config", Context.MODE_PRIVATE).getBoolean("connected", false)) }
     var showGamePicker by remember { mutableStateOf(false) }
     var showAdbGuide by remember { mutableStateOf(false) }
-    var showAccessibilityDisclosure by remember { mutableStateOf(false) }
-    var disclosureChecked by remember { mutableStateOf(false) }
-    var disclosureAccepted by remember { mutableStateOf(privacyPrefs.getBoolean("accessibility_disclosure_accepted", false)) }
     var keyCaptureIndex by remember { mutableStateOf<Int?>(null) }
 
     val selectedGame = games.firstOrNull { it.packageName == selectedPackage }
@@ -135,22 +133,16 @@ private fun ChillHome() {
         Toast.makeText(context, otgStatus, Toast.LENGTH_SHORT).show()
     }
 
-    fun openAccessibilitySettings() {
-        if (disclosureAccepted) {
-            context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        } else {
-            disclosureChecked = false
-            showAccessibilityDisclosure = true
-        }
-    }
-
     fun toggleMapping() {
-        if (!mappingEnabled && !isMappingAccessibilityEnabled(context)) {
-            openAccessibilitySettings()
+        adbConnected = context.getSharedPreferences("adb_config", Context.MODE_PRIVATE).getBoolean("connected", false)
+        if (!mappingEnabled && !adbConnected) {
+            tab = HomeTab.SETTINGS
+            Toast.makeText(context, "Ghép nối Wi‑Fi ADB trước khi bật ánh xạ", Toast.LENGTH_LONG).show()
             return
         }
         mappingEnabled = !mappingEnabled
-        runtime.edit().putBoolean("mapping_enabled", mappingEnabled).apply()
+        runtime.edit().putBoolean("mapping_enabled", mappingEnabled).putBoolean("adb_mode", mappingEnabled).apply()
+        if (mappingEnabled) AdbInputMappingService.start(context) else AdbInputMappingService.stop(context)
     }
 
     fun playSelectedGame() {
@@ -210,36 +202,52 @@ private fun ChillHome() {
                 profile = profile,
                 mappings = mappings,
                 mappingEnabled = mappingEnabled,
-                accessibilityOn = accessibilityOn,
+                adbConnected = adbConnected,
                 keyCaptureIndex = keyCaptureIndex,
                 onPickGame = { games = InstalledGames.list(context); showGamePicker = true },
                 onToggleMapping = ::toggleMapping,
                 onCaptureKey = { index ->
-                    if (mappingEnabled) { mappingEnabled = false; runtime.edit().putBoolean("mapping_enabled", false).apply() }
+                    if (mappingEnabled) {
+                        mappingEnabled = false
+                        runtime.edit().putBoolean("mapping_enabled", false).putBoolean("adb_mode", false).apply()
+                        AdbInputMappingService.stop(context)
+                    }
                     keyCaptureIndex = index
                 },
                 onEditOverlay = {
                     if (!Settings.canDrawOverlays(context)) {
                         context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}")))
-                    } else if (!isMappingAccessibilityEnabled(context)) {
-                        openAccessibilitySettings()
                     } else {
-                        Toast.makeText(context, "Vào game rồi chạm bong bóng G → Sửa nút để đặt phím chính xác", Toast.LENGTH_LONG).show()
-                        playSelectedGame()
+                        adbConnected = context.getSharedPreferences("adb_config", Context.MODE_PRIVATE).getBoolean("connected", false)
+                        if (adbConnected) {
+                            runtime.edit().putBoolean("adb_mode", true).apply()
+                            AdbInputMappingService.start(context)
+                            Toast.makeText(context, "ADB đang nhận phím OTG; dùng bong bóng G để mở editor", Toast.LENGTH_LONG).show()
+                            playSelectedGame()
+                        } else {
+                            Toast.makeText(context, "Ghép nối Wi‑Fi ADB trong Cài đặt trước khi mở editor", Toast.LENGTH_LONG).show()
+                            tab = HomeTab.SETTINGS
+                        }
                     }
                 },
-                onRefreshAccessibility = { accessibilityOn = isMappingAccessibilityEnabled(context) },
+                onRefreshAdb = { adbConnected = context.getSharedPreferences("adb_config", Context.MODE_PRIVATE).getBoolean("connected", false) },
                 onResetMappings = { mappings = MappingProfile.defaults(); MappingProfile.save(context, mappings, profile) }
             )
             HomeTab.SETTINGS -> SettingsScreen(
                 modifier = Modifier.padding(inner),
                 devices = devices,
                 otgStatus = otgStatus,
-                accessibilityOn = accessibilityOn,
+                adbConnected = adbConnected,
                 mappingEnabled = mappingEnabled,
                 onRefreshOtg = ::refreshOtg,
-                onRefreshAccessibility = { accessibilityOn = isMappingAccessibilityEnabled(context) },
-                onOpenAccessibility = ::openAccessibilitySettings,
+                onRefreshAdb = { adbConnected = context.getSharedPreferences("adb_config", Context.MODE_PRIVATE).getBoolean("connected", false) },
+                onDisconnectAdb = {
+                    AdbInputMappingService.stop(context)
+                    runtime.edit().putBoolean("mapping_enabled", false).putBoolean("adb_mode", false).apply()
+                    mappingEnabled = false
+                    adbConnected = false
+                    AdbPairingNotifications.disconnect(context)
+                },
                 onOpenOverlayPermission = { context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}"))) },
                 onStartBubble = { if (Settings.canDrawOverlays(context)) startFloatingBubble(context) else context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}"))) },
                 onStopBubble = { context.stopService(Intent(context, FloatingBubbleService::class.java)) },
@@ -260,32 +268,8 @@ private fun ChillHome() {
     if (showAdbGuide) AlertDialog(
         onDismissRequest = { showAdbGuide = false },
         title = { Text("Kết nối OTG / Wi‑Fi ADB") },
-        text = { Text("USB OTG: cắm bàn phím hoặc chuột HID rồi bấm ‘Quét thiết bị’. Android tự nhận USB HID; không ghép đôi như Bluetooth.\n\nWi‑Fi ADB: bật Gỡ lỗi không dây trong Tùy chọn nhà phát triển và ghép nối bằng công cụ ADB tương thích. Android không cho ứng dụng thường tự cấp quyền ADB.") },
+        text = { Text("USB OTG: cắm bàn phím hoặc chuột HID rồi bấm ‘Quét thiết bị’. Android tự nhận USB HID.\n\nWi‑Fi ADB: trên Android 11+, bật Wireless debugging, nhập IP cùng cổng ghép đôi và cổng ADB trong Cài đặt ChillOTG, rồi gửi thông báo để nhập mã 6 số. Mã không được lưu.\n\nADB mode đọc phím bằng getevent và gửi tap; một số ROM có thể chặn đọc input event, đồng thời game vẫn có thể nhận phím gốc. Nếu ROM chặn, ứng dụng sẽ báo lỗi; Android không có cách tổng quát khác nếu không dùng quyền đặc biệt/root.") },
         confirmButton = { TextButton(onClick = { showAdbGuide = false }) { Text("Đã hiểu") } }
-    )
-
-    if (showAccessibilityDisclosure) AlertDialog(
-        onDismissRequest = { showAccessibilityDisclosure = false },
-        title = { Text("Quyền Trợ năng của ChillOTG") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("ChillOTG dùng dịch vụ Trợ năng để nhận phím vật lý khi bạn bật ánh xạ và gửi thao tác chạm tại các vị trí do bạn tự đặt. Dịch vụ không đọc nội dung màn hình, không thu thập mật khẩu và không gửi phím/màn hình lên máy chủ. Hồ sơ được lưu trên thiết bị.")
-                Text("Bạn có thể tắt quyền trong Cài đặt Android. Khi bật, các phím được gán sẽ tác động lên ứng dụng đang mở.", color = Amber)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = disclosureChecked, onCheckedChange = { disclosureChecked = it })
-                    Text("Tôi đã đọc và đồng ý bật dịch vụ để ánh xạ phím.")
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(enabled = disclosureChecked, onClick = {
-                context.getSharedPreferences("privacy", Context.MODE_PRIVATE).edit().putBoolean("accessibility_disclosure_accepted", true).apply()
-                disclosureAccepted = true
-                showAccessibilityDisclosure = false
-                context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            }) { Text("Đồng ý & tiếp tục") }
-        },
-        dismissButton = { TextButton(onClick = { showAccessibilityDisclosure = false }) { Text("Không đồng ý") } }
     )
 }
 
@@ -394,13 +378,13 @@ private fun ControlsScreen(
     profile: String,
     mappings: List<KeyMapping>,
     mappingEnabled: Boolean,
-    accessibilityOn: Boolean,
+    adbConnected: Boolean,
     keyCaptureIndex: Int?,
     onPickGame: () -> Unit,
     onToggleMapping: () -> Unit,
     onCaptureKey: (Int) -> Unit,
     onEditOverlay: () -> Unit,
-    onRefreshAccessibility: () -> Unit,
+    onRefreshAdb: () -> Unit,
     onResetMappings: () -> Unit
 ) {
     LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -431,7 +415,7 @@ private fun ControlsScreen(
                 Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("ÁNH XẠ ĐANG ${if (mappingEnabled) "BẬT" else "TẮT"}", color = if (mappingEnabled) Aqua else Amber, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        Text(if (accessibilityOn) "Dịch vụ Trợ năng đã bật" else "Cần bật quyền Trợ năng", color = TextMuted, fontSize = 11.sp)
+                        Text(if (adbConnected) "Wireless ADB đã kết nối" else "Ghép Wi‑Fi ADB để nhận phím", color = TextMuted, fontSize = 11.sp)
                     }
                     Switch(checked = mappingEnabled, onCheckedChange = { onToggleMapping() })
                 }
@@ -474,11 +458,11 @@ private fun SettingsScreen(
     modifier: Modifier,
     devices: List<String>,
     otgStatus: String,
-    accessibilityOn: Boolean,
+    adbConnected: Boolean,
     mappingEnabled: Boolean,
     onRefreshOtg: () -> Unit,
-    onRefreshAccessibility: () -> Unit,
-    onOpenAccessibility: () -> Unit,
+    onRefreshAdb: () -> Unit,
+    onDisconnectAdb: () -> Unit,
     onOpenOverlayPermission: () -> Unit,
     onStartBubble: () -> Unit,
     onStopBubble: () -> Unit,
@@ -502,15 +486,15 @@ private fun SettingsScreen(
                 }
             }
         }
+        item { AdbPairingCard(adbConnected, onRefreshAdb, onDisconnectAdb) }
         item {
             Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = Panel)) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("QUYỀN ỨNG DỤNG", color = TextMain, fontWeight = FontWeight.Bold)
-                    PermissionLine("Trợ năng để nhận phím và gửi chạm", accessibilityOn)
-                    Button(onClick = onOpenAccessibility, modifier = Modifier.fillMaxWidth()) { Text(if (accessibilityOn) "Mở cài đặt Trợ năng" else "Đọc giải thích & bật Trợ năng") }
-                    OutlinedButton(onClick = onRefreshAccessibility, modifier = Modifier.fillMaxWidth()) { Text("Kiểm tra trạng thái Trợ năng") }
+                    Text("CƠ CHẾ NHẬN PHÍM", color = TextMain, fontWeight = FontWeight.Bold)
+                    PermissionLine("Wi‑Fi ADB đã kết nối", adbConnected)
+                    OutlinedButton(onClick = onRefreshAdb, modifier = Modifier.fillMaxWidth()) { Text("Kiểm tra trạng thái kết nối") }
                     OutlinedButton(onClick = onOpenOverlayPermission, modifier = Modifier.fillMaxWidth()) { Text("Cấp quyền cửa sổ nổi") }
-                    Text("Trợ năng chỉ nhận phím để ánh xạ; hồ sơ được lưu cục bộ. Android hiển thị cảnh báo hệ thống khi bạn bật quyền.", color = TextMuted, fontSize = 11.sp)
+                    Text("Bản này không khai báo AccessibilityService. Nếu ROM chặn getevent, ánh xạ phím không hoạt động trên thiết bị đó; Android không có cách tổng quát an toàn khác để đọc/chặn phím toàn hệ thống nếu thiếu quyền đặc biệt.", color = TextMuted, fontSize = 11.sp)
                 }
             }
         }
@@ -529,7 +513,56 @@ private fun SettingsScreen(
         }
         item {
             TextButton(onClick = onAdbGuide, modifier = Modifier.fillMaxWidth()) { Text("Hướng dẫn OTG / Wi‑Fi ADB", color = TextMuted) }
-            Text("ChillOTGConTro  ·  0.1.4", color = TextMuted, fontSize = 10.sp, modifier = Modifier.fillMaxWidth())
+            Text("ChillOTGConTro  ·  0.1.5", color = TextMuted, fontSize = 10.sp, modifier = Modifier.fillMaxWidth())
+        }
+    }
+}
+
+@Composable
+private fun AdbPairingCard(adbConnected: Boolean, onRefresh: () -> Unit, onDisconnect: () -> Unit) {
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("adb_config", Context.MODE_PRIVATE) }
+    var host by remember { mutableStateOf(prefs.getString("host", "") ?: "") }
+    var pairPort by remember { mutableStateOf(prefs.getInt("pair_port", 0).takeIf { it > 0 }?.toString() ?: "") }
+    var connectPort by remember { mutableStateOf(prefs.getInt("connect_port", 0).takeIf { it > 0 }?.toString() ?: "") }
+    var status by remember { mutableStateOf(prefs.getString("last_status", "Chưa ghép đôi") ?: "Chưa ghép đôi") }
+
+    Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = Panel)) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            Text("GHÉP NỐI WI‑FI ADB", color = TextMain, fontWeight = FontWeight.Bold)
+            Text("Android 11 trở lên · cùng mạng Wi‑Fi · cần bật Wireless debugging", color = TextMuted, fontSize = 11.sp)
+            OutlinedTextField(value = host, onValueChange = { host = it }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Địa chỉ IP của điện thoại") }, placeholder = { Text("Ví dụ: 192.168.1.20") })
+            OutlinedTextField(value = pairPort, onValueChange = { pairPort = it.filter(Char::isDigit).take(5) }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Cổng ghép đôi tạm thời") })
+            OutlinedTextField(value = connectPort, onValueChange = { connectPort = it.filter(Char::isDigit).take(5) }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Cổng Wireless debugging / ADB") })
+            Text("Hai cổng này khác nhau. Lấy IP và cổng ghép đôi trong ‘Pair device with pairing code’; cổng ADB nằm ở màn hình Wireless debugging chính.", color = TextMuted, fontSize = 11.sp)
+            Text("Trạng thái: ${if (adbConnected) "Đã kết nối Wi‑Fi ADB" else status}", color = if (adbConnected) Aqua else Amber, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            Button(onClick = {
+                val pp = pairPort.toIntOrNull() ?: 0
+                val cp = connectPort.toIntOrNull() ?: 0
+                val validHost = host.trim().matches(Regex("[A-Za-z0-9.:-]{1,100}"))
+                if (!validHost || pp !in 1..65535 || cp !in 1..65535) {
+                    Toast.makeText(context, "Nhập IP/host và cả hai cổng hợp lệ trước.", Toast.LENGTH_LONG).show()
+                } else {
+                    prefs.edit().putString("host", host.trim()).putInt("pair_port", pp).putInt("connect_port", cp).apply()
+                    if (android.os.Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                        (context as? Activity)?.requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 742)
+                        Toast.makeText(context, "Cho phép thông báo, sau đó bấm lại để nhận ô nhập mã.", Toast.LENGTH_LONG).show()
+                    } else {
+                        AdbPairingNotifications.sendPairPrompt(context)
+                        Toast.makeText(context, "Đã gửi thông báo. Nhập mã 6 số trực tiếp trong thông báo.", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }, modifier = Modifier.fillMaxWidth()) { Text("GỬI THÔNG BÁO NHẬP MÃ") }
+            OutlinedButton(onClick = {
+                status = prefs.getString("last_status", if (prefs.getBoolean("connected", false)) "Đã kết nối" else "Chưa ghép đôi") ?: "Chưa ghép đôi"
+                onRefresh()
+            }, modifier = Modifier.fillMaxWidth()) { Text("Làm mới trạng thái") }
+            if (adbConnected) OutlinedButton(onClick = onDisconnect, modifier = Modifier.fillMaxWidth()) { Text("Ngắt phiên ADB của ChillOTG") }
+            OutlinedButton(onClick = {
+                runCatching { context.startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                    .onFailure { Toast.makeText(context, "Mở Tùy chọn nhà phát triển từ Cài đặt Android.", Toast.LENGTH_LONG).show() }
+            }, modifier = Modifier.fillMaxWidth()) { Text("MỞ TÙY CHỌN NHÀ PHÁT TRIỂN") }
+            Text("Mã ghép đôi chỉ được dùng một lần và không lưu vào hồ sơ. Chỉ ghép nối với thiết bị của bạn trên mạng tin cậy.", color = Amber, fontSize = 10.sp)
         }
     }
 }
@@ -661,13 +694,6 @@ private fun navColors() = NavigationBarItemDefaults.colors(
     unselectedIconColor = TextMuted,
     unselectedTextColor = TextMuted
 )
-
-private fun isMappingAccessibilityEnabled(context: Context): Boolean {
-    val manager = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
-    return manager.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK).any { service ->
-        service.resolveInfo.serviceInfo.packageName == context.packageName && service.resolveInfo.serviceInfo.name.endsWith("KeyMappingService")
-    }
-}
 
 private fun startFloatingBubble(context: Context) {
     val intent = Intent(context, FloatingBubbleService::class.java)

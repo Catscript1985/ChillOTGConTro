@@ -11,8 +11,8 @@ android {
         applicationId = "com.chillotgcontro"
         minSdk = 23
         targetSdk = 35
-        versionCode = 5
-        versionName = "0.1.4"
+        versionCode = 6
+        versionName = "0.1.5"
     }
     signingConfigs {
         create("release") {
@@ -44,5 +44,8 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.documentfile:documentfile:1.0.1")
+    implementation("com.github.MuntashirAkon:libadb-android:3.1.1")
+    implementation("com.github.MuntashirAkon:sun-security-android:1.1")
+    implementation("org.conscrypt:conscrypt-android:2.5.3")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
