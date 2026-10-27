@@ -18,7 +18,7 @@ Android không cho ứng dụng thông thường điều khiển `adbd`/tự gh�
 
 ### GitHub Actions (khuyến nghị)
 
-Push mã lên GitHub. Workflow `Android APK` chạy `assembleDebug`; trong GitHub mở **Actions → Android APK → workflow run → Artifacts** để tải `ChillOTGConTro-apk`, bên trong là `ChillOTGConTro.apk`. APK Actions là bản debug.
+Push mã lên GitHub. Workflow `Android APK` chạy `assembleDebug`; trong GitHub mở **Actions → Android APK → workflow run → Artifacts** để tải `ChillOTGConTro-debug-apk`, bên trong là `ChillOTGConTro-debug.apk`. Đây là bản debug ký tạm; để cài/cập nhật ổn định, dùng APK signed ở GitHub Release.
 
 ### Máy có Android SDK
 
