@@ -30,6 +30,8 @@ Cài JDK 17+, Android SDK Platform 35 và Build Tools 35.0.0, sau đó tại th�
 
 APK debug: `app/build/outputs/apk/debug/app-debug.apk`.
 
+Bản release đã ký cần đặt khóa ngoài repository và truyền các biến `ANDROID_KEYSTORE_PATH`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_PASSWORD`, `ANDROID_KEY_ALIAS` (`chillotgcontro`), sau đó chạy `./gradlew assembleRelease`. Dùng đúng khóa đã phát hành để APK mới có thể cập nhật bản cũ.
+
 Cài qua USB debugging:
 
 ```bash
@@ -54,4 +56,4 @@ Nếu trước đó đã cài APK debug từ GitHub Actions rồi Android từ c
 
 ## Tạo bản release
 
-Release cần keystore riêng và ký APK/AAB. Không commit keystore hay mật khẩu vào repository.
+Keystore và mật khẩu ký là bí mật: giữ riêng, sao lưu an toàn và không commit/đăng lên GitHub. Nếu mất khóa, Android không cho cập nhật đè cùng package bằng khóa mới.
