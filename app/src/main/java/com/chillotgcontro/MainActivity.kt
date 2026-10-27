@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.Build
 import android.provider.Settings
 import android.view.KeyEvent as AndroidKeyEvent
 import android.view.accessibility.AccessibilityManager
@@ -63,6 +64,9 @@ private fun ChillHome() {
     var enabled by remember { mutableStateOf(context.getSharedPreferences("runtime", Context.MODE_PRIVATE).getBoolean("mapping_enabled", false)) }
     var showGamePicker by remember { mutableStateOf(false) }
     var showAdbGuide by remember { mutableStateOf(false) }
+    var showAccessibilityDisclosure by remember { mutableStateOf(false) }
+    var disclosureChecked by remember { mutableStateOf(false) }
+    var disclosureAccepted by remember { mutableStateOf(context.getSharedPreferences("privacy", Context.MODE_PRIVATE).getBoolean("accessibility_disclosure_accepted", false)) }
     var keyCaptureIndex by remember { mutableStateOf<Int?>(null) }
     var accessibilityOn by remember { mutableStateOf(isMappingAccessibilityEnabled(context)) }
     val selectedGame = games.firstOrNull { it.packageName == selectedPackage }
@@ -129,12 +133,18 @@ private fun ChillHome() {
                 Text(if (accessibilityOn) "Trợ năng ChillOTG: ĐÃ BẬT" else "Trợ năng ChillOTG: CHƯA BẬT", color = if (accessibilityOn) Teal else Color(0xFFFFC56B), fontWeight = FontWeight.Bold)
                 Text("Android yêu cầu bật dịch vụ Trợ năng để nhận phím ở ngoài ứng dụng. Quyền hiển thị nổi chỉ cần nếu muốn dùng bong bóng điều khiển.", color = Color.LightGray)
                 OutlinedButton(onClick = { accessibilityOn = isMappingAccessibilityEnabled(context) }, modifier = Modifier.fillMaxWidth()) { Text("Kiểm tra lại quyền Trợ năng") }
-                Button(onClick = { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }, modifier = Modifier.fillMaxWidth()) { Text("Mở cài đặt Trợ năng") }
+                Button(onClick = {
+                    if (disclosureAccepted) context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    else { disclosureChecked = false; showAccessibilityDisclosure = true }
+                }, modifier = Modifier.fillMaxWidth()) { Text("Đọc giải thích & bật Trợ năng") }
                 OutlinedButton(onClick = { context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }, modifier = Modifier.fillMaxWidth()) { Text("Cấp quyền nút nổi") }
-                OutlinedButton(onClick = {
-                    if (!Settings.canDrawOverlays(context)) context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}")))
-                    else context.startForegroundService(Intent(context, FloatingBubbleService::class.java))
-                }, modifier = Modifier.fillMaxWidth()) { Text("Bật nút nổi") }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = {
+                        if (!Settings.canDrawOverlays(context)) context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}")))
+                        else startFloatingBubble(context)
+                    }, modifier = Modifier.weight(1f)) { Text("Hiện bong bóng") }
+                    OutlinedButton(onClick = { context.stopService(Intent(context, FloatingBubbleService::class.java)) }, modifier = Modifier.weight(1f)) { Text("Tắt bong bóng") }
+                }
             }
         }
         item {
@@ -210,6 +220,35 @@ private fun ChillHome() {
         text = { Text("OTG: cắm bàn phím/chuột USB qua đầu OTG; Android tự nhận thiết bị HID. Quay lại trang chủ và bấm ‘Kết nối / quét OTG’.\n\nWi‑Fi ADB: bật Gỡ lỗi không dây trong Tùy chọn nhà phát triển, rồi ghép nối bằng ứng dụng ADB tương thích. App thông thường không thể tự cấp quyền ADB hoặc tự kết nối có đặc quyền.") },
         confirmButton = { TextButton(onClick = { showAdbGuide = false }) { Text("Đã hiểu") } }
     )
+
+    if (showAccessibilityDisclosure) AlertDialog(
+        onDismissRequest = { showAccessibilityDisclosure = false },
+        title = { Text("Vì sao ChillOTG cần Trợ năng?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("ChillOTG dùng dịch vụ Trợ năng để nhận phím vật lý khi bạn chơi game và gửi thao tác chạm tại các vị trí do chính bạn đặt. Dịch vụ chỉ xử lý phím để ánh xạ; app không đọc nội dung trên màn hình, không thu thập mật khẩu và không gửi phím/màn hình lên máy chủ. Hồ sơ được lưu trên thiết bị.")
+                Text("Bạn có thể tắt quyền bất cứ lúc nào trong Cài đặt Android. Khi bật, thao tác phím được ánh xạ có thể tác động lên ứng dụng đang mở.", color = Color(0xFFFFC56B))
+                Row {
+                    Checkbox(checked = disclosureChecked, onCheckedChange = { disclosureChecked = it })
+                    Text("Tôi đã đọc và đồng ý bật dịch vụ để ánh xạ phím.", modifier = Modifier.padding(top = 12.dp))
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = disclosureChecked, onClick = {
+                context.getSharedPreferences("privacy", Context.MODE_PRIVATE).edit().putBoolean("accessibility_disclosure_accepted", true).apply()
+                disclosureAccepted = true
+                showAccessibilityDisclosure = false
+                context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }) { Text("Đồng ý & mở cài đặt") }
+        },
+        dismissButton = { TextButton(onClick = { showAccessibilityDisclosure = false }) { Text("Không đồng ý") } }
+    )
+}
+
+private fun startFloatingBubble(context: Context) {
+    val intent = Intent(context, FloatingBubbleService::class.java)
+    if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(intent) else context.startService(intent)
 }
 
 private fun isMappingAccessibilityEnabled(context: Context): Boolean {

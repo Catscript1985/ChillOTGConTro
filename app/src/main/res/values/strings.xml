@@ -1,4 +1,4 @@
 <resources>
     <string name="app_name">ChillOTGConTro</string>
-    <string name="accessibility_description">Nhận phím khi dịch vụ được bật và thực hiện cử chỉ ánh xạ do bạn cấu hình. Không ghi lại màn hình hoặc dữ liệu cá nhân.</string>
+    <string name="accessibility_description">Nhận phím vật lý khi bạn bật dịch vụ để ánh xạ thành thao tác chạm tại vị trí bạn chọn. Không đọc nội dung màn hình hoặc gửi phím lên máy chủ.</string>
 </resources>
