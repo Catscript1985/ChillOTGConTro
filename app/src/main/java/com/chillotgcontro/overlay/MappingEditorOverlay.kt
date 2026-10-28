@@ -30,10 +30,12 @@ class MappingEditorOverlay(private val service: Service, private val onClose: ()
     private var root: FrameLayout? = null
     private var markerLayer: FrameLayout? = null
     private var statusText: TextView? = null
+    private var mouseSettingsOverlay: View? = null
     private var selectedIndex: Int? = null
     private var waitingForPosition = false
     private var pendingComponentType = "tap"
     private var previousMappingEnabled = false
+    private var editorScale = .85f
     private var profile = "Mặc định"
     private var mappings = emptyList<KeyMapping>()
     private val handler = Handler(Looper.getMainLooper())
@@ -58,6 +60,7 @@ class MappingEditorOverlay(private val service: Service, private val onClose: ()
         if (root != null) return
         profile = service.getSharedPreferences("profiles", Service.MODE_PRIVATE).getString("selected", "Mặc định") ?: "Mặc định"
         mappings = MappingProfile.load(service, profile)
+        editorScale = runtime.getFloat("editor_scale", .85f).coerceIn(.60f, 1.15f)
         previousMappingEnabled = runtime.getBoolean("mapping_enabled", false)
         runtime.edit().putBoolean("mapping_enabled", false).putString("editor_state", "idle")
             .putString("editor_result", if (mode == "add") "Chọn thành phần rồi chạm vị trí cần đặt" else "Chạm nút để chọn · kéo joystick/nút để di chuyển").apply()
@@ -80,6 +83,20 @@ class MappingEditorOverlay(private val service: Service, private val onClose: ()
                         runtime.edit().putString("editor_state", "idle").putString("editor_result", "Đã thêm joystick WASD · chọn hướng để đổi phím").apply()
                         statusText?.text = "Joystick đã thêm · kéo vòng tròn để đặt vị trí"
                         drawMarkers()
+                    } else if (pendingComponentType == "mouse_button") {
+                        val used = mappings.filter { it.controlType == "mouse_button" }.map { it.mouseButton }.toSet()
+                        val button = listOf("left", "right", "middle").firstOrNull { it !in used }
+                        if (button == null) {
+                            Toast.makeText(service, "Đã dùng hết ba nút chuột trái/phải/giữa; xóa một nút trước.", Toast.LENGTH_LONG).show()
+                            statusText?.text = "Mỗi nút chuột chỉ gán một vị trí · xóa một nút để thêm tiếp"
+                        } else {
+                            mappings = mappings + MappingProfile.createMouseButton(x, y, button)
+                            MappingProfile.save(service, mappings, profile)
+                            selectedIndex = mappings.lastIndex
+                            runtime.edit().putString("editor_state", "idle").putString("editor_result", "Đã thêm ${MappingProfile.mouseButtonLabel(button)} · chạm nút rồi chọn bánh răng để cấu hình").apply()
+                            statusText?.text = "Đã thêm ${MappingProfile.mouseButtonLabel(button)} · chọn nút để mở ⚙"
+                            drawMarkers()
+                        }
                     } else {
                         runtime.edit().putFloat("editor_x", x).putFloat("editor_y", y)
                             .putString("editor_state", "await_new_key").putString("editor_result", "").apply()
@@ -103,18 +120,50 @@ class MappingEditorOverlay(private val service: Service, private val onClose: ()
         }
         val title = TextView(service).apply {
             text = "CHILLOTG  ·  ${profile.takeLast(24)}"
-            setTextColor(Color.WHITE); textSize = 13f; setPadding(dp(4), dp(2), dp(4), dp(4))
+            setTextColor(Color.WHITE); textSize = 13f; maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
+            setPadding(dp(4), dp(2), dp(4), dp(4))
         }
-        bar.addView(title)
+        val titleRow = LinearLayout(service).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        titleRow.addView(title, LinearLayout.LayoutParams(0, -2, 1f))
+        val scaleText = TextView(service).apply { setTextColor(0xFF55D6BE.toInt()); textSize = 10f; gravity = Gravity.CENTER; text = "${(editorScale * 100).toInt()}%" }
+        fun applyScale() {
+            bar.pivotX = bar.width / 2f
+            bar.pivotY = 0f
+            bar.scaleX = editorScale
+            bar.scaleY = editorScale
+            scaleText.text = "${(editorScale * 100).toInt()}%"
+        }
+        titleRow.addView(toolbarIconButton("−") {
+            editorScale = (editorScale - .10f).coerceIn(.60f, 1.15f)
+            runtime.edit().putFloat("editor_scale", editorScale).apply()
+            applyScale()
+        })
+        titleRow.addView(scaleText, LinearLayout.LayoutParams(dp(40), dp(32)))
+        titleRow.addView(toolbarIconButton("+") {
+            editorScale = (editorScale + .10f).coerceIn(.60f, 1.15f)
+            runtime.edit().putFloat("editor_scale", editorScale).apply()
+            applyScale()
+        })
+        val content = LinearLayout(service).apply { orientation = LinearLayout.VERTICAL }
+        var expanded = true
+        lateinit var collapseButton: TextView
+        collapseButton = toolbarIconButton("▾") {
+            expanded = !expanded
+            content.visibility = if (expanded) View.VISIBLE else View.GONE
+            collapseButton.text = if (expanded) "▾" else "▸"
+        }
+        titleRow.addView(collapseButton)
+        bar.addView(titleRow)
         statusText = TextView(service).apply { setTextColor(0xFF55D6BE.toInt()); textSize = 11f; text = "Đang tải…"; setPadding(dp(4), 0, dp(4), dp(4)) }
-        bar.addView(statusText)
+        content.addView(statusText)
 
         val topRow = LinearLayout(service).apply { orientation = LinearLayout.HORIZONTAL }
         topRow.addView(actionButton("Thoát", action = { close() }, weight = .7f))
-        topRow.addView(actionButton("+ Nút chạm", action = { beginPlace("tap") }, weight = 1f))
-        topRow.addView(actionButton("Joystick WASD", action = { beginPlace("joystick") }, weight = 1.35f))
+        topRow.addView(actionButton("+ Nút chạm", action = { beginPlace("tap") }, weight = .95f))
+        topRow.addView(actionButton("Nút chuột", action = { beginPlace("mouse_button") }, weight = .9f))
+        topRow.addView(actionButton("Joystick WASD", action = { beginPlace("joystick") }, weight = 1.25f))
         topRow.addView(actionButton("Lưu", action = { saveCurrent() }, weight = .7f))
-        bar.addView(topRow)
+        content.addView(topRow)
 
         val editRow = LinearLayout(service).apply { orientation = LinearLayout.HORIZONTAL }
         editRow.addView(actionButton("Đổi phím", action = {
@@ -133,14 +182,15 @@ class MappingEditorOverlay(private val service: Service, private val onClose: ()
                 drawMarkers()
             }
         }, weight = 1f))
-        bar.addView(editRow)
+        content.addView(editRow)
 
         val bottomRow = LinearLayout(service).apply { orientation = LinearLayout.HORIZONTAL }
         bottomRow.addView(actionButton("Chia sẻ", action = { shareCurrent() }, weight = 1f))
         bottomRow.addView(actionButton("Nhập keymap", action = { openKeymapLibrary() }, weight = 1f))
-        bar.addView(bottomRow)
+        content.addView(bottomRow)
+        bar.addView(content)
 
-        val barLp = FrameLayout.LayoutParams(-1, -2, Gravity.TOP)
+        val barLp = FrameLayout.LayoutParams(-1, -2, Gravity.TOP or Gravity.CENTER_HORIZONTAL)
         barLp.setMargins(dp(10), dp(28), dp(10), 0)
         frame.addView(bar, barLp)
 
@@ -151,7 +201,7 @@ class MappingEditorOverlay(private val service: Service, private val onClose: ()
             root = null
             Toast.makeText(service, "Không mở được editor nổi; kiểm tra quyền hiển thị trên ứng dụng khác", Toast.LENGTH_LONG).show()
         }
-        frame.post { drawMarkers() }
+        frame.post { applyScale(); drawMarkers() }
         handler.post(refresh)
     }
 
@@ -159,7 +209,11 @@ class MappingEditorOverlay(private val service: Service, private val onClose: ()
         waitingForPosition = true
         pendingComponentType = type
         selectedIndex = null
-        val message = if (type == "joystick") "Chạm tâm joystick trên màn hình game" else "Chạm vị trí nút trên game"
+        val message = when (type) {
+            "joystick" -> "Chạm tâm joystick trên màn hình game"
+            "mouse_button" -> "Chạm vị trí nút chuột trên màn hình game"
+            else -> "Chạm vị trí nút trên game"
+        }
         runtime.edit().putString("editor_state", "idle").putString("editor_result", message).apply()
         statusText?.text = message
     }
@@ -203,6 +257,10 @@ class MappingEditorOverlay(private val service: Service, private val onClose: ()
         joystickGroups.values.forEach { indices -> drawJoystick(layer, indices) }
         mappings.forEachIndexed { index, mapping ->
             if (index in joystickIndices) return@forEachIndexed
+            if (mapping.controlType == "mouse_button") {
+                drawMouseButtonMarker(layer, index, mapping)
+                return@forEachIndexed
+            }
             val size = dp(48)
             val marker = TextView(service).apply {
                 text = mapping.label
@@ -248,6 +306,165 @@ class MappingEditorOverlay(private val service: Service, private val onClose: ()
                 }
             }
         }
+    }
+
+    private fun drawMouseButtonMarker(layer: FrameLayout, index: Int, mapping: KeyMapping) {
+        val width = dp(62)
+        val height = dp(50)
+        val marker = FrameLayout(service)
+        val label = TextView(service).apply {
+            text = MappingProfile.mouseButtonShortLabel(mapping.mouseButton)
+            textSize = 15f
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            background = rounded(if (selectedIndex == index) 0xFFFEA44A.toInt() else 0xFF168C80.toInt(), dp(15))
+            elevation = dp(6).toFloat()
+        }
+        marker.addView(label, FrameLayout.LayoutParams(-1, -1))
+        if (selectedIndex == index) {
+            val gear = TextView(service).apply {
+                text = "⚙"
+                textSize = 14f
+                gravity = Gravity.CENTER
+                setTextColor(Color.WHITE)
+                background = rounded(0xFF263C46.toInt(), dp(12))
+                elevation = dp(8).toFloat()
+                setOnClickListener { openMouseButtonSettings(index) }
+            }
+            marker.addView(gear, FrameLayout.LayoutParams(dp(25), dp(25), Gravity.TOP or Gravity.END))
+        }
+
+        val lp = FrameLayout.LayoutParams(width, height)
+        lp.leftMargin = (mapping.xRatio * layer.width).toInt() - width / 2
+        lp.topMargin = (mapping.yRatio * layer.height).toInt() - height / 2
+        layer.addView(marker, lp)
+        var downX = 0f; var downY = 0f; var startLeft = 0; var startTop = 0; var moved = false
+        label.setOnTouchListener { _, event ->
+            val currentLp = marker.layoutParams as FrameLayout.LayoutParams
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> { downX = event.rawX; downY = event.rawY; startLeft = currentLp.leftMargin; startTop = currentLp.topMargin; moved = false; true }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = event.rawX - downX; val dy = event.rawY - downY
+                    if (abs(dx) + abs(dy) > dp(4)) moved = true
+                    if (moved) {
+                        currentLp.leftMargin = (startLeft + dx.toInt()).coerceIn(0, (layer.width - width).coerceAtLeast(0))
+                        currentLp.topMargin = (startTop + dy.toInt()).coerceIn(0, (layer.height - height).coerceAtLeast(0))
+                        marker.layoutParams = currentLp
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP -> {
+                    if (moved) {
+                        val next = mappings.toMutableList()
+                        next[index] = mapping.copy(
+                            xRatio = ((currentLp.leftMargin + width / 2f) / layer.width).coerceIn(0f, 1f),
+                            yRatio = ((currentLp.topMargin + height / 2f) / layer.height).coerceIn(0f, 1f)
+                        )
+                        mappings = next
+                        MappingProfile.save(service, mappings, profile)
+                    } else {
+                        selectedIndex = index
+                        statusText?.text = "Đã chọn ${mapping.label} · chạm ⚙ để cấu hình"
+                        drawMarkers()
+                    }
+                    true
+                }
+                else -> true
+            }
+        }
+    }
+
+    private fun openMouseButtonSettings(index: Int) {
+        val host = root ?: return
+        val mapping = mappings.getOrNull(index)?.takeIf { it.controlType == "mouse_button" } ?: return
+        mouseSettingsOverlay?.let { runCatching { host.removeView(it) } }
+        var choice = mapping.mouseButton
+        val options = linkedMapOf<String, TextView>()
+        val scrim = FrameLayout(service).apply {
+            setBackgroundColor(0x99000000.toInt())
+        }
+        val card = LinearLayout(service).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(16), dp(18), dp(16))
+            background = rounded(0xFF13232B.toInt(), dp(20))
+            elevation = dp(16).toFloat()
+            setOnClickListener { }
+        }
+        card.addView(TextView(service).apply {
+            text = "Cấu hình nút chuột"
+            textSize = 17f
+            setTextColor(Color.WHITE)
+            setTypeface(null, android.graphics.Typeface.BOLD)
+        })
+        card.addView(TextView(service).apply {
+            text = "Chọn nút vật lý sẽ phát chạm tại vị trí này."
+            textSize = 12f
+            setTextColor(0xFFD6E1E5.toInt())
+            setPadding(0, dp(5), 0, dp(10))
+        })
+        val labels = linkedMapOf("left" to "Chuột trái (L)", "right" to "Chuột phải (R)", "middle" to "Chuột giữa (M)")
+        fun refreshOptions() {
+            options.forEach { (id, view) ->
+                view.text = (if (id == choice) "✓  " else "    ") + labels.getValue(id)
+                view.setTextColor(if (id == choice) 0xFF55D6BE.toInt() else Color.WHITE)
+                view.background = rounded(if (id == choice) 0xFF263F45.toInt() else 0xFF26343D.toInt(), dp(12))
+            }
+        }
+        labels.forEach { (id, label) ->
+            val option = TextView(service).apply {
+                text = label
+                textSize = 14f
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(12), 0, dp(12), 0)
+                layoutParams = LinearLayout.LayoutParams(-1, dp(42)).apply { topMargin = dp(4) }
+                setOnClickListener { choice = id; refreshOptions() }
+            }
+            options[id] = option
+            card.addView(option)
+        }
+        refreshOptions()
+        val saveButton = TextView(service).apply {
+            text = "Lưu"
+            textSize = 14f
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            background = rounded(0xFF08756B.toInt(), dp(12))
+            layoutParams = LinearLayout.LayoutParams(-1, dp(44)).apply { topMargin = dp(12) }
+            setOnClickListener {
+                val duplicate = mappings.indices.any { it != index && mappings[it].controlType == "mouse_button" && mappings[it].mouseButton == choice }
+                if (duplicate) {
+                    Toast.makeText(service, "Nút ${MappingProfile.mouseButtonLabel(choice)} đã được gán ở vị trí khác.", Toast.LENGTH_LONG).show()
+                    return@setOnClickListener
+                }
+                val updated = mappings.toMutableList()
+                updated[index] = mapping.copy(
+                    keyCode = MappingProfile.mouseButtonKeyCode(choice),
+                    label = MappingProfile.mouseButtonLabel(choice),
+                    mouseButton = choice
+                )
+                mappings = updated
+                MappingProfile.save(service, mappings, profile, synchronous = true)
+                host.removeView(scrim)
+                mouseSettingsOverlay = null
+                selectedIndex = index
+                statusText?.text = "Đã lưu ${MappingProfile.mouseButtonLabel(choice)} vào keymap"
+                drawMarkers()
+            }
+        }
+        card.addView(saveButton)
+        val cancelButton = TextView(service).apply {
+            text = "Hủy"
+            textSize = 13f
+            gravity = Gravity.CENTER
+            setTextColor(0xFFD6E1E5.toInt())
+            layoutParams = LinearLayout.LayoutParams(-1, dp(38)).apply { topMargin = dp(4) }
+            setOnClickListener { host.removeView(scrim); mouseSettingsOverlay = null }
+        }
+        card.addView(cancelButton)
+        scrim.setOnClickListener { host.removeView(scrim); mouseSettingsOverlay = null }
+        scrim.addView(card, FrameLayout.LayoutParams(dp(310), -2, Gravity.CENTER))
+        host.addView(scrim, FrameLayout.LayoutParams(-1, -1))
+        mouseSettingsOverlay = scrim
     }
 
     private fun drawJoystick(layer: FrameLayout, indices: List<Int>) {
@@ -328,6 +545,16 @@ class MappingEditorOverlay(private val service: Service, private val onClose: ()
         }
     }
 
+    private fun toolbarIconButton(label: String, action: () -> Unit) = TextView(service).apply {
+        text = label
+        textSize = 16f
+        gravity = Gravity.CENTER
+        setTextColor(Color.WHITE)
+        background = rounded(0xFF263C46.toInt(), dp(10))
+        layoutParams = LinearLayout.LayoutParams(dp(34), dp(32)).apply { setMargins(dp(2), 0, dp(2), dp(2)) }
+        setOnClickListener { action() }
+    }
+
     private fun actionButton(label: String, action: () -> Unit, weight: Float) = Button(service).apply {
         text = label
         isAllCaps = false
@@ -348,7 +575,7 @@ class MappingEditorOverlay(private val service: Service, private val onClose: ()
         if (!previousMappingEnabled && service.getSharedPreferences("adb_config", Service.MODE_PRIVATE).getBoolean("connected", false)) {
             AdbInputMappingService.stop(service)
         }
-        root = null; markerLayer = null; statusText = null; selectedIndex = null; waitingForPosition = false
+        root = null; markerLayer = null; statusText = null; mouseSettingsOverlay = null; selectedIndex = null; waitingForPosition = false
         onClose()
     }
 

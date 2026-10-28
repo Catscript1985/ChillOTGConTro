@@ -162,6 +162,9 @@ class AdbInputMappingService : Service() {
         }
         if (name.startsWith("KEY_F") && name.removePrefix("KEY_F").toIntOrNull() in 1..12) return KeyEvent.KEYCODE_F1 + (name.removePrefix("KEY_F").toInt() - 1)
         return when (name) {
+            "BTN_LEFT" -> KeyEvent.KEYCODE_BUTTON_1
+            "BTN_RIGHT" -> KeyEvent.KEYCODE_BUTTON_2
+            "BTN_MIDDLE" -> KeyEvent.KEYCODE_BUTTON_3
             "KEY_SPACE" -> KeyEvent.KEYCODE_SPACE
             "KEY_ENTER", "KEY_KPENTER" -> KeyEvent.KEYCODE_ENTER
             "KEY_ESC" -> KeyEvent.KEYCODE_ESCAPE

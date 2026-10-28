@@ -582,8 +582,16 @@ private fun SettingsScreen(
             }
         }
         item {
+            Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = Panel)) {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("GÓC NHÌN FPS / ẨN CON TRỎ", color = TextMain, fontWeight = FontWeight.Bold)
+                    Text("Chưa hỗ trợ khóa và ẩn chuột toàn hệ thống trong game khác. Android chỉ bắt/ẩn con trỏ trong cửa sổ app đang giữ focus; khi bắt chuột, game bên dưới không còn nhận sự kiện. Nút chuột trong editor hiện ánh xạ click trái/phải/giữa thành chạm tại vị trí đã đặt, không phải mouse-look tương đối kiểu PC.", color = Amber, fontSize = 11.sp)
+                }
+            }
+        }
+        item {
             TextButton(onClick = onAdbGuide, modifier = Modifier.fillMaxWidth()) { Text("Hướng dẫn OTG / Wi‑Fi ADB", color = TextMuted) }
-            Text("ChillOTGConTro  ·  0.1.10", color = TextMuted, fontSize = 10.sp, modifier = Modifier.fillMaxWidth())
+            Text("ChillOTGConTro  ·  0.1.11", color = TextMuted, fontSize = 10.sp, modifier = Modifier.fillMaxWidth())
         }
     }
 }

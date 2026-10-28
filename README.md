@@ -1,12 +1,13 @@
 # ChillOTGConTro
 
-Ứng dụng Android Kotlin (API 23+) quản lý game, nhận bàn phím/tay cầm qua Wireless debugging (ADB), và ánh xạ phím sang thao tác chạm trong game. Bản 0.1.10 không khai báo AccessibilityService.
+Ứng dụng Android Kotlin (API 23+) quản lý game, nhận bàn phím/tay cầm qua Wireless debugging (ADB), và ánh xạ phím sang thao tác chạm trong game. Bản 0.1.11 không khai báo AccessibilityService.
 
 ## Tính năng
 
 - Game hub với danh sách game cài trên máy và nút mở game.
 - Hồ sơ mapping riêng theo package game.
-- Editor nổi có nút **+ Nút chạm** và nút **Joystick WASD** riêng; joystick mặc định là khung tròn 4 hướng W/A/S/D, có thể kéo để đặt lại và chọn từng hướng để đổi phím.
+- Editor nổi có thể thu nhỏ/phóng to, thu gọn thanh công cụ; có nút **+ Nút chạm**, **Nút chuột** và **Joystick WASD** riêng. Joystick mặc định là khung tròn 4 hướng W/A/S/D, có thể kéo để đặt lại và chọn từng hướng để đổi phím.
+- Nút chuột có thể đặt trên màn hình, chọn marker để mở bánh răng, chọn trái/phải/giữa rồi lưu; mỗi loại click vật lý ánh xạ thành tap tại tọa độ đã đặt.
 - Thanh editor có **Lưu**, **Chia sẻ** keymap JSON và **Nhập keymap** từ tệp.
 - Thư viện keymap: lưu preset có tên, tải một preset vào game đang chọn, chia sẻ/xóa preset và nhập JSON; có thể mở từ tab Điều khiển hoặc menu bong bóng nổi.
 - Ghép nối Wireless ADB tự dò mDNS, không cần nhập IP/cổng; notification có ô nhập mã pairing 6 số.
@@ -14,6 +15,7 @@
 - ADB `getevent` nhận phím HID và gửi `input tap`/`input swipe`; tiến trình chạy dưới foreground notification do người dùng khởi động.
 - Bong bóng nổi dùng artwork launcher gốc, giữ trọn hình logo (không cắt góc), có menu thêm/sửa nút, bật/tắt mapping, mở thư viện keymap và ẩn bong bóng.
 - Khi bấm Chơi, app xin quyền overlay nếu cần và chỉ mở game sau khi service xác nhận bong bóng đã hiện; không còn mở game âm thầm khi thiếu quyền.
+- Mouse-look/ẩn con trỏ toàn hệ thống chưa hỗ trợ cho game bên thứ ba: Android pointer capture chỉ chuyển sự kiện tới cửa sổ app đang focus, khiến game bên dưới không nhận chuột.
 
 ## Ghép nối và sử dụng
 
@@ -21,7 +23,7 @@
 2. Cho phép quyền **Thông báo** và **Thiết bị ở gần** nếu Android yêu cầu. Trong ChillOTGConTro → **Cài đặt → Bắt đầu ghép nối tự động**.
 3. Mở **Pair device with pairing code** trong Wireless debugging. ChillOTG tự dò dịch vụ và gửi notification; nhập mã 6 số trong notification.
 4. Sau lần ghép đôi đầu, lần tiếp theo vào Cài đặt → **Kết nối lại đã ghép đôi** → **Đồng ý kết nối**. Wireless debugging phải bật và điện thoại ở cùng mạng Wi‑Fi; tắt/mở lại Wireless debugging có thể cần thử kết nối lại.
-5. Chọn game và bấm **Chơi ngay**. Nếu chưa có quyền cửa sổ nổi, cấp quyền Android rồi quay lại; ứng dụng sẽ chờ bong bóng sẵn sàng trước khi mở game. Bong bóng mang logo ChillOTG. Trong editor nổi, bấm **Joystick WASD** để đặt khung tròn ngay; hoặc **+ Nút chạm** để đặt nút riêng rồi nhấn phím OTG.
+5. Chọn game và bấm **Chơi ngay**. Nếu chưa có quyền cửa sổ nổi, cấp quyền Android rồi quay lại; ứng dụng sẽ chờ bong bóng sẵn sàng trước khi mở game. Trong editor, dùng **− / +** để đổi kích thước và mũi tên để thu gọn/mở thanh công cụ. Bấm **Joystick WASD** để đặt khung tròn; **+ Nút chạm** để đặt nút phím; hoặc **Nút chuột** để đặt marker rồi bấm marker → ⚙ để chọn trái/phải/giữa và **Lưu**.
 6. Kéo nút hoặc cả vòng joystick để căn vị trí, bấm **Lưu**. **Chia sẻ** gửi keymap JSON; **Nhập keymap** mở bộ chọn tệp. Để tái sử dụng cho game khác, mở **Lưu / tải keymap** từ tab Điều khiển hoặc menu bong bóng, lưu với tên dễ nhớ rồi chọn **Tải cho game** ở game đích.
 7. Tắt mapping khi muốn dừng. Ngắt phiên ADB trong Cài đặt chỉ đóng kết nối của ứng dụng; khóa tin cậy vẫn lưu tới khi xóa dữ liệu/gỡ ứng dụng hoặc thu hồi thiết bị trong Developer options.
 
@@ -33,7 +35,7 @@ Joystick hiện phát một **swipe ngắn 280 ms** từ tâm ra hướng tươn
 
 ## Cài đặt và cập nhật APK
 
-- Bản phát hành ổn định: `ChillOTGConTro-v0.1.10.apk` trong GitHub Release `v0.1.10`.
+- Bản phát hành ổn định: `ChillOTGConTro-v0.1.11.apk` trong GitHub Release `v0.1.11`.
 - Bản mới giữ `applicationId` và khóa ký ổn định để cập nhật đè bản Release trước. Không cài đè APK debug do GitHub Actions ký tạm; gỡ bản debug trước (việc gỡ có thể xóa dữ liệu cục bộ).
 - Nếu Android báo “Ứng dụng chưa được cài đặt”, kiểm tra tệp tải đủ, quyền **Cài ứng dụng không rõ nguồn gốc** cho trình quản lý tệp và xung đột chữ ký.
 - Play Protect có thể cảnh báo APK sideload chưa được phân phối/đánh giá qua Play. Không tắt Play Protect để né cảnh báo.

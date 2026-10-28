@@ -13,7 +13,8 @@ data class KeyMapping(
     val label: String,
     val controlType: String = "tap",
     val groupId: String = "",
-    val direction: String = ""
+    val direction: String = "",
+    val mouseButton: String = "left"
 )
 
 data class KeymapPreset(
@@ -55,6 +56,29 @@ object MappingProfile {
             KeyMapping(KeyEvent.KEYCODE_S, x, y, "S", "joystick", group, "down"),
             KeyMapping(KeyEvent.KEYCODE_D, x, y, "D", "joystick", group, "right")
         )
+    }
+
+    fun createMouseButton(xRatio: Float, yRatio: Float, button: String = "left") = KeyMapping(
+        mouseButtonKeyCode(button), xRatio.coerceIn(0f, 1f), yRatio.coerceIn(0f, 1f), mouseButtonLabel(button),
+        controlType = "mouse_button", mouseButton = button
+    )
+
+    fun mouseButtonKeyCode(button: String) = when (button) {
+        "right" -> KeyEvent.KEYCODE_BUTTON_2
+        "middle" -> KeyEvent.KEYCODE_BUTTON_3
+        else -> KeyEvent.KEYCODE_BUTTON_1
+    }
+
+    fun mouseButtonLabel(button: String) = when (button) {
+        "right" -> "Chuột phải"
+        "middle" -> "Chuột giữa"
+        else -> "Chuột trái"
+    }
+
+    fun mouseButtonShortLabel(button: String) = when (button) {
+        "right" -> "R"
+        "middle" -> "M"
+        else -> "L"
     }
 
     fun exportJson(profile: String, mappings: List<KeyMapping>): String = JSONObject()
@@ -144,7 +168,8 @@ object MappingProfile {
                 .put("label", mapping.label.take(16))
                 .put("type", mapping.controlType)
                 .put("group", mapping.groupId)
-                .put("direction", mapping.direction))
+                .put("direction", mapping.direction)
+                .put("mouseButton", mapping.mouseButton))
         }
         return array
     }
@@ -159,12 +184,17 @@ object MappingProfile {
             val y = item.getDouble("y").toFloat()
             require(x.isFinite() && y.isFinite()) { "Tọa độ keymap không hợp lệ." }
             val rawType = item.optString("type", "tap")
-            val type = if (rawType == "joystick") "joystick" else "tap"
+            val type = when (rawType) {
+                "joystick" -> "joystick"
+                "mouse_button" -> "mouse_button"
+                else -> "tap"
+            }
             val direction = item.optString("direction", "")
             require(type != "joystick" || direction in setOf("up", "down", "left", "right")) { "Hướng joystick không hợp lệ." }
+            val mouseButton = item.optString("mouseButton", "left").takeIf { it in setOf("left", "right", "middle") } ?: "left"
             KeyMapping(
                 key, x.coerceIn(0f, 1f), y.coerceIn(0f, 1f), item.optString("label", "KEY").take(16),
-                type, item.optString("group", ""), direction
+                type, item.optString("group", ""), direction, mouseButton
             )
         }
     }
