@@ -268,7 +268,7 @@ private fun ChillHome() {
     if (showAdbGuide) AlertDialog(
         onDismissRequest = { showAdbGuide = false },
         title = { Text("Kết nối OTG / Wi‑Fi ADB") },
-        text = { Text("USB OTG: cắm bàn phím hoặc chuột HID rồi bấm ‘Quét thiết bị’. Android tự nhận USB HID.\n\nWi‑Fi ADB: trên Android 11+, bật Wireless debugging, nhập IP cùng cổng ghép đôi và cổng ADB trong Cài đặt ChillOTG, rồi gửi thông báo để nhập mã 6 số. Mã không được lưu.\n\nADB mode đọc phím bằng getevent và gửi tap; một số ROM có thể chặn đọc input event, đồng thời game vẫn có thể nhận phím gốc. Nếu ROM chặn, ứng dụng sẽ báo lỗi; Android không có cách tổng quát khác nếu không dùng quyền đặc biệt/root.") },
+        text = { Text("USB OTG: cắm bàn phím hoặc chuột HID rồi bấm ‘Quét thiết bị’. Android tự nhận USB HID.\n\nWi‑Fi ADB: Android 11+ cần bật Wireless debugging. Bấm ‘Bắt đầu ghép nối tự động’, rồi mở Wireless debugging → Pair device with pairing code. ChillOTG tự dò IP và cổng trên điện thoại; notification sẽ hiện ô nhập mã 6 số. Không cần nhập IP/cổng.\n\nUSB debugging có dây không thay thế Wireless debugging và app thông thường không thể tự bật/cấp quyền ADB hệ thống. ADB mode đọc phím bằng getevent và gửi tap; một số ROM có thể chặn đọc input event.") },
         confirmButton = { TextButton(onClick = { showAdbGuide = false }) { Text("Đã hiểu") } }
     )
 }
@@ -513,7 +513,7 @@ private fun SettingsScreen(
         }
         item {
             TextButton(onClick = onAdbGuide, modifier = Modifier.fillMaxWidth()) { Text("Hướng dẫn OTG / Wi‑Fi ADB", color = TextMuted) }
-            Text("ChillOTGConTro  ·  0.1.5", color = TextMuted, fontSize = 10.sp, modifier = Modifier.fillMaxWidth())
+            Text("ChillOTGConTro  ·  0.1.6", color = TextMuted, fontSize = 10.sp, modifier = Modifier.fillMaxWidth())
         }
     }
 }
@@ -522,37 +522,35 @@ private fun SettingsScreen(
 private fun AdbPairingCard(adbConnected: Boolean, onRefresh: () -> Unit, onDisconnect: () -> Unit) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("adb_config", Context.MODE_PRIVATE) }
-    var host by remember { mutableStateOf(prefs.getString("host", "") ?: "") }
-    var pairPort by remember { mutableStateOf(prefs.getInt("pair_port", 0).takeIf { it > 0 }?.toString() ?: "") }
-    var connectPort by remember { mutableStateOf(prefs.getInt("connect_port", 0).takeIf { it > 0 }?.toString() ?: "") }
     var status by remember { mutableStateOf(prefs.getString("last_status", "Chưa ghép đôi") ?: "Chưa ghép đôi") }
 
     Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = Panel)) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
             Text("GHÉP NỐI WI‑FI ADB", color = TextMain, fontWeight = FontWeight.Bold)
-            Text("Android 11 trở lên · cùng mạng Wi‑Fi · cần bật Wireless debugging", color = TextMuted, fontSize = 11.sp)
-            OutlinedTextField(value = host, onValueChange = { host = it }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Địa chỉ IP của điện thoại") }, placeholder = { Text("Ví dụ: 192.168.1.20") })
-            OutlinedTextField(value = pairPort, onValueChange = { pairPort = it.filter(Char::isDigit).take(5) }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Cổng ghép đôi tạm thời") })
-            OutlinedTextField(value = connectPort, onValueChange = { connectPort = it.filter(Char::isDigit).take(5) }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Cổng Wireless debugging / ADB") })
-            Text("Hai cổng này khác nhau. Lấy IP và cổng ghép đôi trong ‘Pair device with pairing code’; cổng ADB nằm ở màn hình Wireless debugging chính.", color = TextMuted, fontSize = 11.sp)
+            Text("Tự dò IP và cổng qua mDNS · Android 11 trở lên · cùng mạng Wi‑Fi", color = TextMuted, fontSize = 11.sp)
+            Text("1. Bật Wireless debugging trong Tùy chọn nhà phát triển.\n2. Bấm Bắt đầu ghép nối.\n3. Mở ‘Pair device with pairing code’.\n4. Nhập mã 6 số khi ChillOTG gửi thông báo.", color = TextMuted, fontSize = 12.sp)
+            Text("USB debugging có dây khác với Wireless debugging; ứng dụng không thể tự bật gỡ lỗi hệ thống.", color = Amber, fontSize = 11.sp)
             Text("Trạng thái: ${if (adbConnected) "Đã kết nối Wi‑Fi ADB" else status}", color = if (adbConnected) Aqua else Amber, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
             Button(onClick = {
-                val pp = pairPort.toIntOrNull() ?: 0
-                val cp = connectPort.toIntOrNull() ?: 0
-                val validHost = host.trim().matches(Regex("[A-Za-z0-9.:-]{1,100}"))
-                if (!validHost || pp !in 1..65535 || cp !in 1..65535) {
-                    Toast.makeText(context, "Nhập IP/host và cả hai cổng hợp lệ trước.", Toast.LENGTH_LONG).show()
-                } else {
-                    prefs.edit().putString("host", host.trim()).putInt("pair_port", pp).putInt("connect_port", cp).apply()
-                    if (android.os.Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                        (context as? Activity)?.requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 742)
-                        Toast.makeText(context, "Cho phép thông báo, sau đó bấm lại để nhận ô nhập mã.", Toast.LENGTH_LONG).show()
-                    } else {
-                        AdbPairingNotifications.sendPairPrompt(context)
-                        Toast.makeText(context, "Đã gửi thông báo. Nhập mã 6 số trực tiếp trong thông báo.", Toast.LENGTH_LONG).show()
+                if (Build.VERSION.SDK_INT >= 33) {
+                    val required = listOf(Manifest.permission.POST_NOTIFICATIONS, Manifest.permission.NEARBY_WIFI_DEVICES)
+                    val missing = required.filter { context.checkSelfPermission(it) != android.content.pm.PackageManager.PERMISSION_GRANTED }
+                    if (missing.isNotEmpty()) {
+                        (context as? Activity)?.requestPermissions(missing.toTypedArray(), 742)
+                        Toast.makeText(context, "Cho phép Thông báo và Thiết bị ở gần, rồi bấm lại để bắt đầu.", Toast.LENGTH_LONG).show()
+                        return@Button
                     }
                 }
-            }, modifier = Modifier.fillMaxWidth()) { Text("GỬI THÔNG BÁO NHẬP MÃ") }
+                status = "Đang tự dò dịch vụ ghép đôi trên điện thoại này…"
+                prefs.edit().putString("last_status", status).apply()
+                runCatching {
+                    AdbPairingNotifications.startDiscovery(context)
+                    context.startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    Toast.makeText(context, "Mở Wireless debugging → Pair device with pairing code. ChillOTG sẽ tự gửi thông báo khi tìm thấy.", Toast.LENGTH_LONG).show()
+                }.onFailure {
+                    Toast.makeText(context, "Mở Tùy chọn nhà phát triển từ Cài đặt Android.", Toast.LENGTH_LONG).show()
+                }
+            }, modifier = Modifier.fillMaxWidth()) { Text("BẮT ĐẦU GHÉP NỐI TỰ ĐỘNG") }
             OutlinedButton(onClick = {
                 status = prefs.getString("last_status", if (prefs.getBoolean("connected", false)) "Đã kết nối" else "Chưa ghép đôi") ?: "Chưa ghép đôi"
                 onRefresh()
@@ -562,7 +560,7 @@ private fun AdbPairingCard(adbConnected: Boolean, onRefresh: () -> Unit, onDisco
                 runCatching { context.startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
                     .onFailure { Toast.makeText(context, "Mở Tùy chọn nhà phát triển từ Cài đặt Android.", Toast.LENGTH_LONG).show() }
             }, modifier = Modifier.fillMaxWidth()) { Text("MỞ TÙY CHỌN NHÀ PHÁT TRIỂN") }
-            Text("Mã ghép đôi chỉ được dùng một lần và không lưu vào hồ sơ. Chỉ ghép nối với thiết bị của bạn trên mạng tin cậy.", color = Amber, fontSize = 10.sp)
+            Text("Mã ghép đôi chỉ dùng một lần và không lưu. Chỉ ghép nối trên mạng tin cậy.", color = Amber, fontSize = 10.sp)
         }
     }
 }

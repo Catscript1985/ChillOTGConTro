@@ -49,11 +49,11 @@ class AdbInputMappingService : Service() {
     private fun runMonitor() {
         try {
             val prefs = getSharedPreferences("adb_config", MODE_PRIVATE)
-            val host = prefs.getString("host", "") ?: ""
-            val port = prefs.getInt("connect_port", 0)
-            require(host.isNotBlank() && port in 1..65535) { "Nhập địa chỉ IP và cổng Wireless debugging trong Cài đặt trước." }
             val adb = ChillAdbConnectionManager.get(this)
-            if (!adb.isConnected && !adb.connect(host, port)) throw IllegalStateException("Không kết nối được ADB. Kiểm tra IP/cổng Wireless debugging.")
+            if (!adb.isConnected) {
+                val connected = adb.connectTls(this, 20_000L)
+                if (!connected && !adb.isConnected) throw IllegalStateException("Không tự tìm thấy dịch vụ Wireless ADB. Bật Wireless debugging và ghép đôi lại.")
+            }
             prefs.edit().putBoolean("connected", true).putString("last_status", "ADB đang theo dõi phím OTG").apply()
             updateNotification("ADB đã kết nối · đang chờ phím OTG")
             val stream = adb.openStream("shell:getevent -lt")
