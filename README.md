@@ -1,6 +1,6 @@
 # ChillOTGConTro
 
-Ứng dụng Android Kotlin (API 23+) quản lý game, nhận bàn phím/tay cầm qua Wireless debugging (ADB), và ánh xạ phím sang thao tác chạm trong game. Bản 0.1.8 không khai báo AccessibilityService.
+Ứng dụng Android Kotlin (API 23+) quản lý game, nhận bàn phím/tay cầm qua Wireless debugging (ADB), và ánh xạ phím sang thao tác chạm trong game. Bản 0.1.9 không khai báo AccessibilityService.
 
 ## Tính năng
 
@@ -12,7 +12,8 @@
 - Ghép nối Wireless ADB tự dò mDNS, không cần nhập IP/cổng; notification có ô nhập mã pairing 6 số.
 - Sau lần ghép đôi đầu, khóa ADB được lưu riêng trong vùng dữ liệu ứng dụng; người dùng có thể chọn **Kết nối lại đã ghép đôi** và xác nhận trong app, không phải nhập lại mã pairing.
 - ADB `getevent` nhận phím HID và gửi `input tap`/`input swipe`; tiến trình chạy dưới foreground notification do người dùng khởi động.
-- Bong bóng nổi có menu thêm/sửa nút, bật/tắt mapping, mở thư viện keymap và ẩn bong bóng.
+- Bong bóng nổi dùng launcher icon của ChillOTG, có menu thêm/sửa nút, bật/tắt mapping, mở thư viện keymap và ẩn bong bóng.
+- Khi bấm Chơi, app xin quyền overlay nếu cần và chỉ mở game sau khi service xác nhận bong bóng đã hiện; không còn mở game âm thầm khi thiếu quyền.
 
 ## Ghép nối và sử dụng
 
@@ -20,7 +21,7 @@
 2. Cho phép quyền **Thông báo** và **Thiết bị ở gần** nếu Android yêu cầu. Trong ChillOTGConTro → **Cài đặt → Bắt đầu ghép nối tự động**.
 3. Mở **Pair device with pairing code** trong Wireless debugging. ChillOTG tự dò dịch vụ và gửi notification; nhập mã 6 số trong notification.
 4. Sau lần ghép đôi đầu, lần tiếp theo vào Cài đặt → **Kết nối lại đã ghép đôi** → **Đồng ý kết nối**. Wireless debugging phải bật và điện thoại ở cùng mạng Wi‑Fi; tắt/mở lại Wireless debugging có thể cần thử kết nối lại.
-5. Chọn game, cấp quyền cửa sổ nổi và mở game. Trong editor nổi, bấm **Joystick WASD** để đặt khung tròn ngay; hoặc **+ Nút chạm** để đặt nút riêng rồi nhấn phím OTG.
+5. Chọn game và bấm **Chơi ngay**. Nếu chưa có quyền cửa sổ nổi, cấp quyền Android rồi quay lại; ứng dụng sẽ chờ bong bóng sẵn sàng trước khi mở game. Bong bóng mang logo ChillOTG. Trong editor nổi, bấm **Joystick WASD** để đặt khung tròn ngay; hoặc **+ Nút chạm** để đặt nút riêng rồi nhấn phím OTG.
 6. Kéo nút hoặc cả vòng joystick để căn vị trí, bấm **Lưu**. **Chia sẻ** gửi keymap JSON; **Nhập keymap** mở bộ chọn tệp. Để tái sử dụng cho game khác, mở **Lưu / tải keymap** từ tab Điều khiển hoặc menu bong bóng, lưu với tên dễ nhớ rồi chọn **Tải cho game** ở game đích.
 7. Tắt mapping khi muốn dừng. Ngắt phiên ADB trong Cài đặt chỉ đóng kết nối của ứng dụng; khóa tin cậy vẫn lưu tới khi xóa dữ liệu/gỡ ứng dụng hoặc thu hồi thiết bị trong Developer options.
 
@@ -32,7 +33,7 @@ Joystick hiện phát một **swipe ngắn 280 ms** từ tâm ra hướng tươn
 
 ## Cài đặt và cập nhật APK
 
-- Bản phát hành ổn định: `ChillOTGConTro-v0.1.8.apk` trong GitHub Release `v0.1.8`.
+- Bản phát hành ổn định: `ChillOTGConTro-v0.1.9.apk` trong GitHub Release `v0.1.9`.
 - Bản mới giữ `applicationId` và khóa ký ổn định để cập nhật đè bản Release trước. Không cài đè APK debug do GitHub Actions ký tạm; gỡ bản debug trước (việc gỡ có thể xóa dữ liệu cục bộ).
 - Nếu Android báo “Ứng dụng chưa được cài đặt”, kiểm tra tệp tải đủ, quyền **Cài ứng dụng không rõ nguồn gốc** cho trình quản lý tệp và xung đột chữ ký.
 - Play Protect có thể cảnh báo APK sideload chưa được phân phối/đánh giá qua Play. Không tắt Play Protect để né cảnh báo.

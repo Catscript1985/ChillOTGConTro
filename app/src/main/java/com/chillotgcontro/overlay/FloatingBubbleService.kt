@@ -11,15 +11,18 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
+import android.util.Log
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.Button
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import com.chillotgcontro.MainActivity
+import com.chillotgcontro.R
 import com.chillotgcontro.adb.AdbInputMappingService
 
 class FloatingBubbleService : Service() {
@@ -31,7 +34,10 @@ class FloatingBubbleService : Service() {
     override fun onCreate() {
         super.onCreate()
         startForegroundNotice()
-        if (Settings.canDrawOverlays(this)) showBubble() else stopSelf()
+        if (Settings.canDrawOverlays(this)) showBubble() else {
+            setBubbleVisible(false)
+            stopSelf()
+        }
     }
 
     private fun startForegroundNotice() {
@@ -45,24 +51,37 @@ class FloatingBubbleService : Service() {
     private fun showBubble() {
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
         val size = dp(48)
-        val tv = TextView(this).apply {
-            text = "G"; textSize = 18f; setTextColor(Color.WHITE); gravity = Gravity.CENTER
+        val iconView = ImageView(this).apply {
+            setImageDrawable(runCatching { packageManager.getApplicationIcon(packageName) }.getOrElse { getDrawable(R.mipmap.ic_launcher)!! })
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(dp(7), dp(7), dp(7), dp(7))
             background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(0xFF20B5A2.toInt(), 0xFF08756B.toInt())).apply { shape = GradientDrawable.OVAL }
+            clipToOutline = true
+            contentDescription = "Biểu tượng ChillOTGConTro · chạm để mở menu"
             elevation = dp(8).toFloat()
         }
         val type = if (Build.VERSION.SDK_INT >= 26) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE
-        val params = WindowManager.LayoutParams(size, size, type, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN, PixelFormat.TRANSLUCENT).apply { gravity = Gravity.TOP or Gravity.END; x = dp(18); y = dp(180) }
+        val params = WindowManager.LayoutParams(size, size, type, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL, PixelFormat.TRANSLUCENT).apply { gravity = Gravity.TOP or Gravity.END; x = dp(18); y = dp(180) }
         var sx = 0f; var sy = 0f; var startX = 0; var startY = 0
-        tv.setOnTouchListener { _, e ->
+        iconView.setOnTouchListener { _, e ->
             when (e.action) {
                 MotionEvent.ACTION_DOWN -> { sx = e.rawX; sy = e.rawY; startX = params.x; startY = params.y; true }
-                MotionEvent.ACTION_MOVE -> { params.x = startX - (e.rawX - sx).toInt(); params.y = startY + (e.rawY - sy).toInt(); wm.updateViewLayout(tv, params); true }
+                MotionEvent.ACTION_MOVE -> { params.x = startX - (e.rawX - sx).toInt(); params.y = startY + (e.rawY - sy).toInt(); runCatching { wm.updateViewLayout(iconView, params) }; true }
                 MotionEvent.ACTION_UP -> { if (kotlin.math.abs(e.rawX - sx) < dp(10) && kotlin.math.abs(e.rawY - sy) < dp(10)) showPanel(); true }
                 else -> true
             }
         }
-        bubble = tv
-        runCatching { wm.addView(tv, params) }.onFailure { Toast.makeText(this, "Không thể hiện nút nổi: hãy cấp quyền hiển thị trên ứng dụng khác", Toast.LENGTH_LONG).show(); stopSelf() }
+        bubble = iconView
+        runCatching {
+            wm.addView(iconView, params)
+            setBubbleVisible(true)
+        }.onFailure {
+            bubble = null
+            setBubbleVisible(false)
+            Log.e("ChillOTGOverlay", "Unable to attach floating bubble", it)
+            Toast.makeText(this, "Không thể hiện nút nổi: kiểm tra quyền hiển thị trên ứng dụng khác", Toast.LENGTH_LONG).show()
+            stopSelf()
+        }
     }
 
     private fun showPanel() {
@@ -111,7 +130,7 @@ class FloatingBubbleService : Service() {
         })
         box.addView(panelButton("Đóng menu") { dismissPanel() })
         val type = if (Build.VERSION.SDK_INT >= 26) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE
-        val params = WindowManager.LayoutParams((resources.displayMetrics.widthPixels * .88f).toInt(), WindowManager.LayoutParams.WRAP_CONTENT, type, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN, PixelFormat.TRANSLUCENT).apply { gravity = Gravity.CENTER }
+        val params = WindowManager.LayoutParams((resources.displayMetrics.widthPixels * .88f).toInt(), WindowManager.LayoutParams.WRAP_CONTENT, type, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL, PixelFormat.TRANSLUCENT).apply { gravity = Gravity.CENTER }
         panel = box
         runCatching { wm.addView(box, params) }.onFailure { panel = null }
     }
@@ -147,11 +166,23 @@ class FloatingBubbleService : Service() {
     }
 
     private fun dismissPanel() { panel?.let { runCatching { wm.removeView(it) } }; panel = null }
+    private fun setBubbleVisible(visible: Boolean) {
+        getSharedPreferences("runtime", MODE_PRIVATE).edit().putBoolean("bubble_visible", visible).apply()
+    }
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int) = START_STICKY
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (!Settings.canDrawOverlays(this)) {
+            setBubbleVisible(false)
+            stopSelfResult(startId)
+            return START_NOT_STICKY
+        }
+        if (bubble == null) showBubble() else setBubbleVisible(true)
+        return START_STICKY
+    }
     override fun onDestroy() {
         editor?.hide(); editor = null
         if (::wm.isInitialized) listOfNotNull(panel, bubble).forEach { runCatching { wm.removeView(it) } }
+        setBubbleVisible(false)
         super.onDestroy()
     }
     override fun onBind(intent: Intent?): IBinder? = null

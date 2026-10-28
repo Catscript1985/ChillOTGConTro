@@ -65,6 +65,8 @@ class MainActivity : ComponentActivity() {
     companion object {
         const val EXTRA_OPEN_KEYMAP_LIBRARY = "open_keymap_library"
         const val EXTRA_IMPORT_KEYMAP_NOW = "import_keymap_now"
+        const val EXTRA_PENDING_BUBBLE_GAME = "pending_bubble_game"
+        const val EXTRA_PENDING_BUBBLE_ONLY = "pending_bubble_only"
     }
 
     override fun dispatchKeyEvent(event: AndroidKeyEvent): Boolean {
@@ -79,6 +81,22 @@ class MainActivity : ComponentActivity() {
                 ChillHome()
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        val currentIntent = intent
+        val pendingGame = currentIntent.getStringExtra(EXTRA_PENDING_BUBBLE_GAME)
+        val showBubbleOnly = currentIntent.getBooleanExtra(EXTRA_PENDING_BUBBLE_ONLY, false)
+        if (pendingGame.isNullOrBlank() && !showBubbleOnly) return
+        currentIntent.removeExtra(EXTRA_PENDING_BUBBLE_GAME)
+        currentIntent.removeExtra(EXTRA_PENDING_BUBBLE_ONLY)
+        if (!Settings.canDrawOverlays(this)) {
+            Toast.makeText(this, "Chưa được cấp quyền cửa sổ nổi nên game chưa mở. Bật quyền rồi nhấn Chơi ngay lần nữa.", Toast.LENGTH_LONG).show()
+            return
+        }
+        startFloatingBubble(this)
+        waitForBubbleReady(this, pendingGame)
     }
 }
 
@@ -170,8 +188,14 @@ private fun ChillHome() {
             showGamePicker = true
             return
         }
-        if (Settings.canDrawOverlays(context)) startFloatingBubble(context)
-        Handler(Looper.getMainLooper()).postDelayed({ InstalledGames.launch(context, game.packageName) }, 350)
+        if (!Settings.canDrawOverlays(context)) {
+            (context as? MainActivity)?.intent?.putExtra(MainActivity.EXTRA_PENDING_BUBBLE_GAME, game.packageName)
+            context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}")))
+            Toast.makeText(context, "Bật ‘Cho phép hiển thị trên ứng dụng khác’; game sẽ mở sau khi bong bóng sẵn sàng.", Toast.LENGTH_LONG).show()
+            return
+        }
+        startFloatingBubble(context)
+        waitForBubbleReady(context, game.packageName)
     }
 
     DisposableEffect(profile, mappings, keyCaptureIndex) {
@@ -234,19 +258,15 @@ private fun ChillHome() {
                     keyCaptureIndex = index
                 },
                 onEditOverlay = {
-                    if (!Settings.canDrawOverlays(context)) {
-                        context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}")))
+                    adbConnected = context.getSharedPreferences("adb_config", Context.MODE_PRIVATE).getBoolean("connected", false)
+                    if (adbConnected) {
+                        runtime.edit().putBoolean("adb_mode", true).apply()
+                        AdbInputMappingService.start(context)
+                        Toast.makeText(context, "ADB đang nhận phím OTG; dùng bong bóng ChillOTG để mở editor", Toast.LENGTH_LONG).show()
+                        playSelectedGame()
                     } else {
-                        adbConnected = context.getSharedPreferences("adb_config", Context.MODE_PRIVATE).getBoolean("connected", false)
-                        if (adbConnected) {
-                            runtime.edit().putBoolean("adb_mode", true).apply()
-                            AdbInputMappingService.start(context)
-                            Toast.makeText(context, "ADB đang nhận phím OTG; dùng bong bóng G để mở editor", Toast.LENGTH_LONG).show()
-                            playSelectedGame()
-                        } else {
-                            Toast.makeText(context, "Ghép nối Wi‑Fi ADB trong Cài đặt trước khi mở editor", Toast.LENGTH_LONG).show()
-                            tab = HomeTab.SETTINGS
-                        }
+                        Toast.makeText(context, "Ghép nối Wi‑Fi ADB trong Cài đặt trước khi mở editor", Toast.LENGTH_LONG).show()
+                        tab = HomeTab.SETTINGS
                     }
                 },
                 onRefreshAdb = { adbConnected = context.getSharedPreferences("adb_config", Context.MODE_PRIVATE).getBoolean("connected", false) },
@@ -270,7 +290,16 @@ private fun ChillHome() {
                     AdbPairingNotifications.disconnect(context)
                 },
                 onOpenOverlayPermission = { context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}"))) },
-                onStartBubble = { if (Settings.canDrawOverlays(context)) startFloatingBubble(context) else context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}"))) },
+                onStartBubble = {
+                    if (Settings.canDrawOverlays(context)) {
+                        startFloatingBubble(context)
+                        waitForBubbleReady(context, null)
+                    } else {
+                        (context as? MainActivity)?.intent?.putExtra(MainActivity.EXTRA_PENDING_BUBBLE_ONLY, true)
+                        context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}")))
+                        Toast.makeText(context, "Bật quyền cửa sổ nổi rồi quay lại ChillOTG để hiện bong bóng.", Toast.LENGTH_LONG).show()
+                    }
+                },
                 onStopBubble = { context.stopService(Intent(context, FloatingBubbleService::class.java)) },
                 onToggleMapping = ::toggleMapping,
                 onAdbGuide = { showAdbGuide = true }
@@ -554,7 +583,7 @@ private fun SettingsScreen(
         }
         item {
             TextButton(onClick = onAdbGuide, modifier = Modifier.fillMaxWidth()) { Text("Hướng dẫn OTG / Wi‑Fi ADB", color = TextMuted) }
-            Text("ChillOTGConTro  ·  0.1.8", color = TextMuted, fontSize = 10.sp, modifier = Modifier.fillMaxWidth())
+            Text("ChillOTGConTro  ·  0.1.9", color = TextMuted, fontSize = 10.sp, modifier = Modifier.fillMaxWidth())
         }
     }
 }
@@ -754,8 +783,23 @@ private fun navColors() = NavigationBarItemDefaults.colors(
 )
 
 private fun startFloatingBubble(context: Context) {
+    context.getSharedPreferences("runtime", Context.MODE_PRIVATE).edit().putBoolean("bubble_visible", false).apply()
     val intent = Intent(context, FloatingBubbleService::class.java)
     if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(intent) else context.startService(intent)
+}
+
+private fun waitForBubbleReady(context: Context, packageName: String?, attemptsRemaining: Int = 30) {
+    val visible = context.getSharedPreferences("runtime", Context.MODE_PRIVATE).getBoolean("bubble_visible", false)
+    if (visible) {
+        if (!packageName.isNullOrBlank()) InstalledGames.launch(context, packageName)
+        else Toast.makeText(context, "Bong bóng ChillOTG đã sẵn sàng", Toast.LENGTH_SHORT).show()
+        return
+    }
+    if (attemptsRemaining <= 0) {
+        Toast.makeText(context, "Không hiện được bong bóng. Kiểm tra quyền ‘Hiển thị trên ứng dụng khác’ rồi thử lại.", Toast.LENGTH_LONG).show()
+        return
+    }
+    Handler(Looper.getMainLooper()).postDelayed({ waitForBubbleReady(context, packageName, attemptsRemaining - 1) }, 100L)
 }
 
 
