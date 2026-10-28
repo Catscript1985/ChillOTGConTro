@@ -23,6 +23,7 @@ import java.util.concurrent.atomic.AtomicReference
 object AdbPairingNotifications {
     const val ACTION_PAIR = "com.chillotgcontro.action.PAIR_WIFI_ADB"
     const val ACTION_DISCOVER = "com.chillotgcontro.action.DISCOVER_WIFI_ADB"
+    const val ACTION_RECONNECT = "com.chillotgcontro.action.RECONNECT_WIFI_ADB"
     const val EXTRA_CODE = "pairing_code"
     const val EXTRA_HOST = "pairing_host"
     const val EXTRA_PAIR_PORT = "pairing_port"
@@ -38,6 +39,12 @@ object AdbPairingNotifications {
     /** Starts mDNS first; when this phone exposes its pairing endpoint, show the inline-code notification. */
     fun startDiscovery(context: Context) {
         val intent = Intent(context, AdbPairingService::class.java).setAction(ACTION_DISCOVER)
+        if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(intent) else context.startService(intent)
+    }
+
+    /** Reuses the app's persisted ADB identity; no pairing code is requested again after initial trust. */
+    fun startReconnect(context: Context) {
+        val intent = Intent(context, AdbPairingService::class.java).setAction(ACTION_RECONNECT)
         if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(intent) else context.startService(intent)
     }
 
@@ -185,6 +192,32 @@ object AdbPairingNotifications {
                     .putString("last_status", t.message ?: "Không ghép nối được")
                     .apply()
                 postResult(app, t.message ?: "Không ghép nối được. Kiểm tra mã và Wireless debugging.", false)
+            } finally {
+                onComplete()
+            }
+        }
+    }
+
+    fun reconnect(context: Context, onComplete: () -> Unit = {}) {
+        val app = context.applicationContext
+        executor.execute {
+            val prefs = app.getSharedPreferences("adb_config", Context.MODE_PRIVATE)
+            try {
+                require(prefs.getBoolean("paired", false)) {
+                    "Cần ghép đôi một lần đầu trong Wireless debugging trước khi kết nối lại."
+                }
+                val adb = ChillAdbConnectionManager.get(app)
+                val connected = adb.isConnected || adb.connectTls(app, 20_000L)
+                require(connected) {
+                    "Không tìm thấy Wireless ADB. Bật Wireless debugging và dùng cùng mạng Wi‑Fi đã ghép đôi."
+                }
+                prefs.edit().putBoolean("connected", true)
+                    .putString("last_status", "Đã kết nối lại bằng khóa ADB đã lưu").apply()
+                postResult(app, "Đã kết nối lại bằng thiết bị đã tin cậy; không cần nhập lại mã ghép đôi.", true)
+            } catch (t: Throwable) {
+                val message = t.message ?: "Kết nối lại Wireless ADB không thành công."
+                prefs.edit().putBoolean("connected", false).putString("last_status", message).apply()
+                postResult(app, message, false)
             } finally {
                 onComplete()
             }

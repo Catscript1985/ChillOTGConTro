@@ -30,6 +30,13 @@ class AdbPairingService : Service() {
                 val code = intent.getStringExtra(AdbPairingNotifications.EXTRA_CODE).orEmpty()
                 AdbPairingNotifications.runPairing(this, host, pairPort, code) { finishService(startId) }
             }
+            AdbPairingNotifications.ACTION_RECONNECT -> {
+                startForeground(
+                    AdbPairingNotifications.PROGRESS_ID,
+                    AdbPairingNotifications.progressNotification(this, "Đang kết nối lại bằng khóa ADB đã lưu")
+                )
+                AdbPairingNotifications.reconnect(this) { finishService(startId) }
+            }
             else -> {
                 stopSelfResult(startId)
                 return START_NOT_STICKY

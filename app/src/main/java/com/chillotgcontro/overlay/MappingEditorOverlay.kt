@@ -30,7 +30,6 @@ class MappingEditorOverlay(private val service: Service, private val onClose: ()
     private var root: FrameLayout? = null
     private var markerLayer: FrameLayout? = null
     private var statusText: TextView? = null
-    private var addMenu: LinearLayout? = null
     private var selectedIndex: Int? = null
     private var waitingForPosition = false
     private var pendingComponentType = "tap"
@@ -110,27 +109,12 @@ class MappingEditorOverlay(private val service: Service, private val onClose: ()
         statusText = TextView(service).apply { setTextColor(0xFF55D6BE.toInt()); textSize = 11f; text = "Đang tải…"; setPadding(dp(4), 0, dp(4), dp(4)) }
         bar.addView(statusText)
 
-        val addOptions = LinearLayout(service).apply {
-            orientation = LinearLayout.HORIZONTAL
-            visibility = View.GONE
-            setPadding(0, dp(2), 0, dp(3))
-        }
-        addOptions.addView(actionButton("Nút chạm", action = {
-            addOptions.visibility = View.GONE
-            beginPlace("tap")
-        }, weight = 1f))
-        addOptions.addView(actionButton("Joystick WASD", action = {
-            addOptions.visibility = View.GONE
-            beginPlace("joystick")
-        }, weight = 1f))
-        addMenu = addOptions
-
         val topRow = LinearLayout(service).apply { orientation = LinearLayout.HORIZONTAL }
-        topRow.addView(actionButton("Thoát", action = { close() }, weight = .85f))
-        topRow.addView(actionButton("+ Thành phần", action = { addOptions.visibility = if (addOptions.visibility == View.VISIBLE) View.GONE else View.VISIBLE }, weight = 1.2f))
-        topRow.addView(actionButton("Lưu", action = { saveCurrent() }, weight = .75f))
+        topRow.addView(actionButton("Thoát", action = { close() }, weight = .7f))
+        topRow.addView(actionButton("+ Nút chạm", action = { beginPlace("tap") }, weight = 1f))
+        topRow.addView(actionButton("Joystick WASD", action = { beginPlace("joystick") }, weight = 1.35f))
+        topRow.addView(actionButton("Lưu", action = { saveCurrent() }, weight = .7f))
         bar.addView(topRow)
-        bar.addView(addOptions)
 
         val editRow = LinearLayout(service).apply { orientation = LinearLayout.HORIZONTAL }
         editRow.addView(actionButton("Đổi phím", action = {
@@ -364,7 +348,7 @@ class MappingEditorOverlay(private val service: Service, private val onClose: ()
         if (!previousMappingEnabled && service.getSharedPreferences("adb_config", Service.MODE_PRIVATE).getBoolean("connected", false)) {
             AdbInputMappingService.stop(service)
         }
-        root = null; markerLayer = null; statusText = null; addMenu = null; selectedIndex = null; waitingForPosition = false
+        root = null; markerLayer = null; statusText = null; selectedIndex = null; waitingForPosition = false
         onClose()
     }
 

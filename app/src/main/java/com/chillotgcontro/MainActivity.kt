@@ -261,6 +261,7 @@ private fun ChillHome() {
                 mappingEnabled = mappingEnabled,
                 onRefreshOtg = ::refreshOtg,
                 onRefreshAdb = { adbConnected = context.getSharedPreferences("adb_config", Context.MODE_PRIVATE).getBoolean("connected", false) },
+                onReconnectAdb = { AdbPairingNotifications.startReconnect(context) },
                 onDisconnectAdb = {
                     AdbInputMappingService.stop(context)
                     runtime.edit().putBoolean("mapping_enabled", false).putBoolean("adb_mode", false).apply()
@@ -301,7 +302,7 @@ private fun ChillHome() {
     if (showAdbGuide) AlertDialog(
         onDismissRequest = { showAdbGuide = false },
         title = { Text("Kết nối OTG / Wi‑Fi ADB") },
-        text = { Text("USB OTG: cắm bàn phím hoặc chuột HID rồi bấm ‘Quét thiết bị’. Android tự nhận USB HID.\n\nWi‑Fi ADB: Android 11+ cần bật Wireless debugging. Bấm ‘Bắt đầu ghép nối tự động’, rồi mở Wireless debugging → Pair device with pairing code. ChillOTG tự dò IP và cổng trên điện thoại; notification sẽ hiện ô nhập mã 6 số. Không cần nhập IP/cổng.\n\nUSB debugging có dây không thay thế Wireless debugging và app thông thường không thể tự bật/cấp quyền ADB hệ thống. ADB mode đọc phím bằng getevent và gửi tap; một số ROM có thể chặn đọc input event.") },
+        text = { Text("USB OTG: cắm bàn phím hoặc chuột HID rồi bấm ‘Quét thiết bị’. Android tự nhận USB HID.\n\nWi‑Fi ADB: Android 11+ cần bật Wireless debugging. Ghép đôi lần đầu bằng ‘Pair device with pairing code’ và mã 6 số trong thông báo. Khóa ADB lưu cục bộ trong app; lần sau bấm ‘Kết nối lại đã ghép đôi’ rồi xác nhận trong ChillOTG, không cần nhập mã. Wireless debugging và cùng mạng vẫn phải bật.\n\nUSB debugging có dây không thay thế Wireless debugging và app thông thường không thể tự cấp quyền hệ thống hoặc tự chấp thuận pairing lần đầu. ADB mode đọc phím bằng getevent và gửi tap; một số ROM có thể chặn đọc input event.") },
         confirmButton = { TextButton(onClick = { showAdbGuide = false }) { Text("Đã hiểu") } }
     )
 }
@@ -440,7 +441,7 @@ private fun ControlsScreen(
                     Button(onClick = onEditOverlay, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(15.dp)) {
                         Text("MỞ GAME + BONG BÓNG", fontWeight = FontWeight.Bold)
                     }
-                    Text("Trong game: bong bóng G → Thêm nút phím → + Thành phần. Chọn nút chạm hoặc joystick WASD; chạm hướng để đổi phím, kéo để căn vị trí rồi Lưu.", color = TextMuted, fontSize = 11.sp)
+                    Text("Trong game: bong bóng G → Thêm nút phím → bấm + Nút chạm hoặc Joystick WASD để đặt khung tròn mặc định; kéo căn vị trí rồi Lưu.", color = TextMuted, fontSize = 11.sp)
                 }
             }
         }
@@ -501,6 +502,7 @@ private fun SettingsScreen(
     mappingEnabled: Boolean,
     onRefreshOtg: () -> Unit,
     onRefreshAdb: () -> Unit,
+    onReconnectAdb: () -> Unit,
     onDisconnectAdb: () -> Unit,
     onOpenOverlayPermission: () -> Unit,
     onStartBubble: () -> Unit,
@@ -525,7 +527,7 @@ private fun SettingsScreen(
                 }
             }
         }
-        item { AdbPairingCard(adbConnected, onRefreshAdb, onDisconnectAdb) }
+        item { AdbPairingCard(adbConnected, onRefreshAdb, onReconnectAdb, onDisconnectAdb) }
         item {
             Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = Panel)) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -552,22 +554,23 @@ private fun SettingsScreen(
         }
         item {
             TextButton(onClick = onAdbGuide, modifier = Modifier.fillMaxWidth()) { Text("Hướng dẫn OTG / Wi‑Fi ADB", color = TextMuted) }
-            Text("ChillOTGConTro  ·  0.1.7", color = TextMuted, fontSize = 10.sp, modifier = Modifier.fillMaxWidth())
+            Text("ChillOTGConTro  ·  0.1.8", color = TextMuted, fontSize = 10.sp, modifier = Modifier.fillMaxWidth())
         }
     }
 }
 
 @Composable
-private fun AdbPairingCard(adbConnected: Boolean, onRefresh: () -> Unit, onDisconnect: () -> Unit) {
+private fun AdbPairingCard(adbConnected: Boolean, onRefresh: () -> Unit, onReconnect: () -> Unit, onDisconnect: () -> Unit) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("adb_config", Context.MODE_PRIVATE) }
     var status by remember { mutableStateOf(prefs.getString("last_status", "Chưa ghép đôi") ?: "Chưa ghép đôi") }
+    var showReconnectConfirm by remember { mutableStateOf(false) }
 
     Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = Panel)) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
             Text("GHÉP NỐI WI‑FI ADB", color = TextMain, fontWeight = FontWeight.Bold)
             Text("Tự dò IP và cổng qua mDNS · Android 11 trở lên · cùng mạng Wi‑Fi", color = TextMuted, fontSize = 11.sp)
-            Text("1. Bật Wireless debugging trong Tùy chọn nhà phát triển.\n2. Bấm Bắt đầu ghép nối.\n3. Mở ‘Pair device with pairing code’.\n4. Nhập mã 6 số khi ChillOTG gửi thông báo.", color = TextMuted, fontSize = 12.sp)
+            Text("Lần đầu: bật Wireless debugging, bấm Bắt đầu ghép nối, mở ‘Pair device with pairing code’ và nhập mã 6 số trong thông báo. Khóa tin cậy được lưu riêng trong app để kết nối lại lần sau.", color = TextMuted, fontSize = 12.sp)
             Text("USB debugging có dây khác với Wireless debugging; ứng dụng không thể tự bật gỡ lỗi hệ thống.", color = Amber, fontSize = 11.sp)
             Text("Trạng thái: ${if (adbConnected) "Đã kết nối Wi‑Fi ADB" else status}", color = if (adbConnected) Aqua else Amber, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
             Button(onClick = {
@@ -591,6 +594,13 @@ private fun AdbPairingCard(adbConnected: Boolean, onRefresh: () -> Unit, onDisco
                 }
             }, modifier = Modifier.fillMaxWidth()) { Text("BẮT ĐẦU GHÉP NỐI TỰ ĐỘNG") }
             OutlinedButton(onClick = {
+                if (prefs.getBoolean("paired", false)) {
+                    showReconnectConfirm = true
+                } else {
+                    Toast.makeText(context, "Hãy hoàn tất ghép đôi lần đầu trước; sau đó nút này sẽ kết nối lại không cần mã.", Toast.LENGTH_LONG).show()
+                }
+            }, modifier = Modifier.fillMaxWidth()) { Text("KẾT NỐI LẠI ĐÃ GHÉP ĐÔI") }
+            OutlinedButton(onClick = {
                 status = prefs.getString("last_status", if (prefs.getBoolean("connected", false)) "Đã kết nối" else "Chưa ghép đôi") ?: "Chưa ghép đôi"
                 onRefresh()
             }, modifier = Modifier.fillMaxWidth()) { Text("Làm mới trạng thái") }
@@ -602,6 +612,17 @@ private fun AdbPairingCard(adbConnected: Boolean, onRefresh: () -> Unit, onDisco
             Text("Mã ghép đôi chỉ dùng một lần và không lưu. Chỉ ghép nối trên mạng tin cậy.", color = Amber, fontSize = 10.sp)
         }
     }
+    if (showReconnectConfirm) AlertDialog(
+        onDismissRequest = { showReconnectConfirm = false },
+        title = { Text("Cho phép kết nối lại?") },
+        text = { Text("ChillOTG sẽ dùng khóa ADB đã được bạn tin cậy ở lần ghép đôi đầu. Không gửi lại mã pairing. Wireless debugging và cùng mạng Wi‑Fi vẫn phải bật.") },
+        confirmButton = {
+            TextButton(onClick = { showReconnectConfirm = false; onReconnect() }) { Text("Đồng ý kết nối") }
+        },
+        dismissButton = {
+            TextButton(onClick = { showReconnectConfirm = false }) { Text("Hủy") }
+        }
+    )
 }
 
 @Composable
