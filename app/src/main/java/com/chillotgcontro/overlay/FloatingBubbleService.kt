@@ -52,11 +52,10 @@ class FloatingBubbleService : Service() {
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
         val size = dp(48)
         val iconView = ImageView(this).apply {
-            setImageDrawable(runCatching { packageManager.getApplicationIcon(packageName) }.getOrElse { getDrawable(R.mipmap.ic_launcher)!! })
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(dp(7), dp(7), dp(7), dp(7))
+            setImageDrawable(getDrawable(R.drawable.ic_launcher_foreground))
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            setPadding(dp(8), dp(8), dp(8), dp(8))
             background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(0xFF20B5A2.toInt(), 0xFF08756B.toInt())).apply { shape = GradientDrawable.OVAL }
-            clipToOutline = true
             contentDescription = "Biểu tượng ChillOTGConTro · chạm để mở menu"
             elevation = dp(8).toFloat()
         }

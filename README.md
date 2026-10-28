@@ -1,6 +1,6 @@
 # ChillOTGConTro
 
-Ứng dụng Android Kotlin (API 23+) quản lý game, nhận bàn phím/tay cầm qua Wireless debugging (ADB), và ánh xạ phím sang thao tác chạm trong game. Bản 0.1.9 không khai báo AccessibilityService.
+Ứng dụng Android Kotlin (API 23+) quản lý game, nhận bàn phím/tay cầm qua Wireless debugging (ADB), và ánh xạ phím sang thao tác chạm trong game. Bản 0.1.10 không khai báo AccessibilityService.
 
 ## Tính năng
 
@@ -12,7 +12,7 @@
 - Ghép nối Wireless ADB tự dò mDNS, không cần nhập IP/cổng; notification có ô nhập mã pairing 6 số.
 - Sau lần ghép đôi đầu, khóa ADB được lưu riêng trong vùng dữ liệu ứng dụng; người dùng có thể chọn **Kết nối lại đã ghép đôi** và xác nhận trong app, không phải nhập lại mã pairing.
 - ADB `getevent` nhận phím HID và gửi `input tap`/`input swipe`; tiến trình chạy dưới foreground notification do người dùng khởi động.
-- Bong bóng nổi dùng launcher icon của ChillOTG, có menu thêm/sửa nút, bật/tắt mapping, mở thư viện keymap và ẩn bong bóng.
+- Bong bóng nổi dùng artwork launcher gốc, giữ trọn hình logo (không cắt góc), có menu thêm/sửa nút, bật/tắt mapping, mở thư viện keymap và ẩn bong bóng.
 - Khi bấm Chơi, app xin quyền overlay nếu cần và chỉ mở game sau khi service xác nhận bong bóng đã hiện; không còn mở game âm thầm khi thiếu quyền.
 
 ## Ghép nối và sử dụng
@@ -33,7 +33,7 @@ Joystick hiện phát một **swipe ngắn 280 ms** từ tâm ra hướng tươn
 
 ## Cài đặt và cập nhật APK
 
-- Bản phát hành ổn định: `ChillOTGConTro-v0.1.9.apk` trong GitHub Release `v0.1.9`.
+- Bản phát hành ổn định: `ChillOTGConTro-v0.1.10.apk` trong GitHub Release `v0.1.10`.
 - Bản mới giữ `applicationId` và khóa ký ổn định để cập nhật đè bản Release trước. Không cài đè APK debug do GitHub Actions ký tạm; gỡ bản debug trước (việc gỡ có thể xóa dữ liệu cục bộ).
 - Nếu Android báo “Ứng dụng chưa được cài đặt”, kiểm tra tệp tải đủ, quyền **Cài ứng dụng không rõ nguồn gốc** cho trình quản lý tệp và xung đột chữ ký.
 - Play Protect có thể cảnh báo APK sideload chưa được phân phối/đánh giá qua Play. Không tắt Play Protect để né cảnh báo.
