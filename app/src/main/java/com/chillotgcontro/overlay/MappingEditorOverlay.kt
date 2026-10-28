@@ -569,10 +569,13 @@ class MappingEditorOverlay(private val service: Service, private val onClose: ()
         val view = root ?: return
         handler.removeCallbacks(refresh)
         MappingProfile.save(service, mappings, profile, synchronous = true)
+        val adbConnected = service.getSharedPreferences("adb_config", Service.MODE_PRIVATE).getBoolean("connected", false)
+        val shizukuMode = runtime.getBoolean("shizuku_mode", false)
         runtime.edit().putString("editor_state", "idle").putBoolean("mapping_enabled", previousMappingEnabled)
-            .putBoolean("adb_mode", previousMappingEnabled && service.getSharedPreferences("adb_config", Service.MODE_PRIVATE).getBoolean("connected", false)).apply()
+            .putBoolean("adb_mode", previousMappingEnabled && adbConnected && !shizukuMode)
+            .putBoolean("shizuku_mode", previousMappingEnabled && shizukuMode).apply()
         runCatching { wm.removeView(view) }
-        if (!previousMappingEnabled && service.getSharedPreferences("adb_config", Service.MODE_PRIVATE).getBoolean("connected", false)) {
+        if (!previousMappingEnabled && (adbConnected || shizukuMode)) {
             AdbInputMappingService.stop(service)
         }
         root = null; markerLayer = null; statusText = null; mouseSettingsOverlay = null; selectedIndex = null; waitingForPosition = false

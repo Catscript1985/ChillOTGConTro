@@ -47,6 +47,8 @@ import com.chillotgcontro.adb.AdbInputMappingService
 import com.chillotgcontro.overlay.FloatingBubbleService
 import com.chillotgcontro.profiles.KeyMapping
 import com.chillotgcontro.profiles.MappingProfile
+import com.chillotgcontro.shizuku.ShizukuSupport
+import rikka.shizuku.Shizuku
 
 private val Bg = Color(0xFF090D15)
 private val Panel = Color(0xFF141B28)
@@ -172,14 +174,22 @@ private fun ChillHome() {
 
     fun toggleMapping() {
         adbConnected = context.getSharedPreferences("adb_config", Context.MODE_PRIVATE).getBoolean("connected", false)
-        if (!mappingEnabled && !adbConnected) {
+        val shizukuReady = ShizukuSupport.isReady()
+        if (!mappingEnabled && !adbConnected && !shizukuReady) {
             tab = HomeTab.SETTINGS
-            Toast.makeText(context, "Ghép nối Wi‑Fi ADB trước khi bật ánh xạ", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, "Kết nối Wi‑Fi ADB hoặc khởi động Shizuku và cấp quyền trước khi bật ánh xạ", Toast.LENGTH_LONG).show()
             return
         }
         mappingEnabled = !mappingEnabled
-        runtime.edit().putBoolean("mapping_enabled", mappingEnabled).putBoolean("adb_mode", mappingEnabled).apply()
-        if (mappingEnabled) AdbInputMappingService.start(context) else AdbInputMappingService.stop(context)
+        val preferShizuku = runtime.getBoolean("prefer_shizuku", false)
+        val useShizuku = mappingEnabled && shizukuReady && (preferShizuku || !adbConnected)
+        runtime.edit().putBoolean("mapping_enabled", mappingEnabled)
+            .putBoolean("adb_mode", mappingEnabled && !useShizuku)
+            .putBoolean("shizuku_mode", useShizuku).apply()
+        if (mappingEnabled) {
+            AdbInputMappingService.start(context)
+            Toast.makeText(context, if (useShizuku) "Đang dùng Shizuku làm backend nhận phím" else "Đang dùng Wi‑Fi ADB làm backend nhận phím", Toast.LENGTH_SHORT).show()
+        } else AdbInputMappingService.stop(context)
     }
 
     fun playSelectedGame() {
@@ -246,26 +256,29 @@ private fun ChillHome() {
                 mappings = mappings,
                 mappingEnabled = mappingEnabled,
                 adbConnected = adbConnected,
+                shizukuReady = ShizukuSupport.isReady(),
                 keyCaptureIndex = keyCaptureIndex,
                 onPickGame = { games = InstalledGames.list(context); showGamePicker = true },
                 onToggleMapping = ::toggleMapping,
                 onCaptureKey = { index ->
                     if (mappingEnabled) {
                         mappingEnabled = false
-                        runtime.edit().putBoolean("mapping_enabled", false).putBoolean("adb_mode", false).apply()
+                        runtime.edit().putBoolean("mapping_enabled", false).putBoolean("adb_mode", false).putBoolean("shizuku_mode", false).apply()
                         AdbInputMappingService.stop(context)
                     }
                     keyCaptureIndex = index
                 },
                 onEditOverlay = {
                     adbConnected = context.getSharedPreferences("adb_config", Context.MODE_PRIVATE).getBoolean("connected", false)
-                    if (adbConnected) {
-                        runtime.edit().putBoolean("adb_mode", true).apply()
+                    val shizukuReady = ShizukuSupport.isReady()
+                    if (adbConnected || shizukuReady) {
+                        val useShizuku = shizukuReady && (runtime.getBoolean("prefer_shizuku", false) || !adbConnected)
+                        runtime.edit().putBoolean("adb_mode", !useShizuku).putBoolean("shizuku_mode", useShizuku).apply()
                         AdbInputMappingService.start(context)
-                        Toast.makeText(context, "ADB đang nhận phím OTG; dùng bong bóng ChillOTG để mở editor", Toast.LENGTH_LONG).show()
+                        Toast.makeText(context, "${if (useShizuku) "Shizuku" else "ADB"} đang nhận phím OTG; dùng bong bóng ChillOTG để mở editor", Toast.LENGTH_LONG).show()
                         playSelectedGame()
                     } else {
-                        Toast.makeText(context, "Ghép nối Wi‑Fi ADB trong Cài đặt trước khi mở editor", Toast.LENGTH_LONG).show()
+                        Toast.makeText(context, "Kết nối Wi‑Fi ADB hoặc khởi động Shizuku trong Cài đặt trước khi mở editor", Toast.LENGTH_LONG).show()
                         tab = HomeTab.SETTINGS
                     }
                 },
@@ -283,9 +296,11 @@ private fun ChillHome() {
                 onRefreshAdb = { adbConnected = context.getSharedPreferences("adb_config", Context.MODE_PRIVATE).getBoolean("connected", false) },
                 onReconnectAdb = { AdbPairingNotifications.startReconnect(context) },
                 onDisconnectAdb = {
-                    AdbInputMappingService.stop(context)
-                    runtime.edit().putBoolean("mapping_enabled", false).putBoolean("adb_mode", false).apply()
-                    mappingEnabled = false
+                    if (!runtime.getBoolean("shizuku_mode", false)) {
+                        AdbInputMappingService.stop(context)
+                        runtime.edit().putBoolean("mapping_enabled", false).putBoolean("adb_mode", false).apply()
+                        mappingEnabled = false
+                    }
                     adbConnected = false
                     AdbPairingNotifications.disconnect(context)
                 },
@@ -442,6 +457,7 @@ private fun ControlsScreen(
     mappings: List<KeyMapping>,
     mappingEnabled: Boolean,
     adbConnected: Boolean,
+    shizukuReady: Boolean,
     keyCaptureIndex: Int?,
     onPickGame: () -> Unit,
     onToggleMapping: () -> Unit,
@@ -479,7 +495,7 @@ private fun ControlsScreen(
                 Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("ÁNH XẠ ĐANG ${if (mappingEnabled) "BẬT" else "TẮT"}", color = if (mappingEnabled) Aqua else Amber, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        Text(if (adbConnected) "Wireless ADB đã kết nối" else "Ghép Wi‑Fi ADB để nhận phím", color = TextMuted, fontSize = 11.sp)
+                        Text(when { adbConnected -> "Wireless ADB đã kết nối"; shizukuReady -> "Shizuku đã cấp quyền"; else -> "Kết nối Wi‑Fi ADB hoặc cấp quyền Shizuku" }, color = TextMuted, fontSize = 11.sp)
                     }
                     Switch(checked = mappingEnabled, onCheckedChange = { onToggleMapping() })
                 }
@@ -557,14 +573,16 @@ private fun SettingsScreen(
             }
         }
         item { AdbPairingCard(adbConnected, onRefreshAdb, onReconnectAdb, onDisconnectAdb) }
+        item { ShizukuSetupCard() }
         item {
             Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = Panel)) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("CƠ CHẾ NHẬN PHÍM", color = TextMain, fontWeight = FontWeight.Bold)
                     PermissionLine("Wi‑Fi ADB đã kết nối", adbConnected)
+                    PermissionLine("Shizuku đang chạy và đã cấp quyền", ShizukuSupport.isReady())
                     OutlinedButton(onClick = onRefreshAdb, modifier = Modifier.fillMaxWidth()) { Text("Kiểm tra trạng thái kết nối") }
                     OutlinedButton(onClick = onOpenOverlayPermission, modifier = Modifier.fillMaxWidth()) { Text("Cấp quyền cửa sổ nổi") }
-                    Text("Bản này không khai báo AccessibilityService. Nếu ROM chặn getevent, ánh xạ phím không hoạt động trên thiết bị đó; Android không có cách tổng quát an toàn khác để đọc/chặn phím toàn hệ thống nếu thiếu quyền đặc biệt.", color = TextMuted, fontSize = 11.sp)
+                    Text("ChillOTG ưu tiên Wi‑Fi ADB; nếu chưa kết nối, có thể dùng Shizuku UserService với quyền shell/root sau khi bạn cài, khởi động và cấp quyền. Nếu ROM chặn getevent, cả hai backend vẫn có thể không đọc được phím.", color = TextMuted, fontSize = 11.sp)
                 }
             }
         }
@@ -585,13 +603,84 @@ private fun SettingsScreen(
             Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = Panel)) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("GÓC NHÌN FPS / ẨN CON TRỎ", color = TextMain, fontWeight = FontWeight.Bold)
-                    Text("Chưa hỗ trợ khóa và ẩn chuột toàn hệ thống trong game khác. Android chỉ bắt/ẩn con trỏ trong cửa sổ app đang giữ focus; khi bắt chuột, game bên dưới không còn nhận sự kiện. Nút chuột trong editor hiện ánh xạ click trái/phải/giữa thành chạm tại vị trí đã đặt, không phải mouse-look tương đối kiểu PC.", color = Amber, fontSize = 11.sp)
+                    Text("Shizuku có thể cấp quyền shell/root cho backend input nhưng không tự bỏ giới hạn focus của Android. Ẩn con trỏ bằng pointer capture vẫn thuộc cửa sổ đang focus; không thể mặc định chuyển chuột ẩn cho game khác. Nút chuột hiện ánh xạ click trái/phải/giữa thành chạm tại vị trí đã đặt, chưa phải mouse-look tương đối kiểu PC.", color = Amber, fontSize = 11.sp)
                 }
             }
         }
         item {
             TextButton(onClick = onAdbGuide, modifier = Modifier.fillMaxWidth()) { Text("Hướng dẫn OTG / Wi‑Fi ADB", color = TextMuted) }
-            Text("ChillOTGConTro  ·  0.1.11", color = TextMuted, fontSize = 10.sp, modifier = Modifier.fillMaxWidth())
+            Text("ChillOTGConTro  ·  0.1.12", color = TextMuted, fontSize = 10.sp, modifier = Modifier.fillMaxWidth())
+        }
+    }
+}
+
+@Composable
+private fun ShizukuSetupCard() {
+    val context = LocalContext.current
+    val runtime = remember { context.getSharedPreferences("runtime", Context.MODE_PRIVATE) }
+    var status by remember { mutableStateOf(ShizukuSupport.status()) }
+    var permissionMessage by remember { mutableStateOf("") }
+    var preferShizuku by remember { mutableStateOf(runtime.getBoolean("prefer_shizuku", false)) }
+    val permissionListener = remember {
+        Shizuku.OnRequestPermissionResultListener { requestCode, grantResult ->
+            if (requestCode == ShizukuSupport.PERMISSION_REQUEST_CODE) {
+                status = ShizukuSupport.status()
+                permissionMessage = if (grantResult == android.content.pm.PackageManager.PERMISSION_GRANTED) "Đã cấp quyền Shizuku cho ChillOTG." else "Chưa cấp quyền; có thể thử lại trong Shizuku."
+            }
+        }
+    }
+    val binderReceived = remember { Shizuku.OnBinderReceivedListener { status = ShizukuSupport.status() } }
+    val binderDead = remember { Shizuku.OnBinderDeadListener { status = ShizukuSupport.status() } }
+    DisposableEffect(Unit) {
+        Shizuku.addBinderReceivedListener(binderReceived)
+        Shizuku.addBinderDeadListener(binderDead)
+        Shizuku.addRequestPermissionResultListener(permissionListener)
+        onDispose {
+            Shizuku.removeBinderReceivedListener(binderReceived)
+            Shizuku.removeBinderDeadListener(binderDead)
+            Shizuku.removeRequestPermissionResultListener(permissionListener)
+        }
+    }
+
+    Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = Panel)) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            Text("SHIZUKU · BACKEND TÙY CHỌN", color = TextMain, fontWeight = FontWeight.Bold)
+            Text(status, color = if (ShizukuSupport.isReady()) Aqua else Amber, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            Text("Cho phép ChillOTG chạy getevent/input qua UserService. Không-root: cài Shizuku, bật Wireless debugging và khởi động Shizuku; phải khởi động lại sau mỗi lần reboot. Máy root có thể chạy Shizuku/Sui với quyền root.", color = TextMuted, fontSize = 11.sp)
+            Text("Backend này chỉ thay thế Wi‑Fi ADB cho nhận phím và gửi tap/swipe; không tự bật mouse-lock hoặc ẩn con trỏ toàn game.", color = Amber, fontSize = 11.sp)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Ưu tiên Shizuku", color = TextMain, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                    Text("Nếu không bật, Wi‑Fi ADB được ưu tiên khi đã kết nối.", color = TextMuted, fontSize = 10.sp)
+                }
+                Switch(checked = preferShizuku, onCheckedChange = {
+                    preferShizuku = it
+                    runtime.edit().putBoolean("prefer_shizuku", it).apply()
+                })
+            }
+            Button(onClick = {
+                when {
+                    !ShizukuSupport.isManagerInstalled(context) -> runCatching {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://shizuku.rikka.app/download/")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    }.onFailure { Toast.makeText(context, "Không mở được trang tải Shizuku", Toast.LENGTH_SHORT).show() }
+                    !ShizukuSupport.hasServer() -> {
+                        if (!ShizukuSupport.launchManager(context)) Toast.makeText(context, "Mở ứng dụng Shizuku và khởi động dịch vụ trước", Toast.LENGTH_LONG).show()
+                    }
+                    !ShizukuSupport.hasPermission() -> runCatching {
+                        Shizuku.requestPermission(ShizukuSupport.PERMISSION_REQUEST_CODE)
+                    }.onFailure { Toast.makeText(context, "Không gửi được yêu cầu Shizuku: ${it.message}", Toast.LENGTH_LONG).show() }
+                    else -> Toast.makeText(context, "Shizuku đã sẵn sàng; ChillOTG sẽ tự dùng khi Wi‑Fi ADB chưa kết nối.", Toast.LENGTH_LONG).show()
+                }
+            }, modifier = Modifier.fillMaxWidth()) {
+                Text(when {
+                    !ShizukuSupport.isManagerInstalled(context) -> "TẢI SHIZUKU"
+                    !ShizukuSupport.hasServer() -> "MỞ SHIZUKU / KHỞI ĐỘNG DỊCH VỤ"
+                    !ShizukuSupport.hasPermission() -> "CẤP QUYỀN CHO CHILLOTG"
+                    else -> "SHIZUKU ĐÃ SẴN SÀNG"
+                })
+            }
+            OutlinedButton(onClick = { status = ShizukuSupport.status() }, modifier = Modifier.fillMaxWidth()) { Text("LÀM MỚI TRẠNG THÁI SHIZUKU") }
+            if (permissionMessage.isNotBlank()) Text(permissionMessage, color = Aqua, fontSize = 11.sp)
         }
     }
 }

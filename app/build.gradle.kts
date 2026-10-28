@@ -11,8 +11,8 @@ android {
         applicationId = "com.chillotgcontro"
         minSdk = 23
         targetSdk = 35
-        versionCode = 12
-        versionName = "0.1.11"
+        versionCode = 13
+        versionName = "0.1.12"
     }
     signingConfigs {
         create("release") {
@@ -28,8 +28,9 @@ android {
             isMinifyEnabled = false
         }
     }
-    buildFeatures { compose = true }
+    buildFeatures { compose = true; aidl = true }
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -47,5 +48,8 @@ dependencies {
     implementation("com.github.MuntashirAkon:libadb-android:3.1.1")
     implementation("com.github.MuntashirAkon:sun-security-android:1.1")
     implementation("org.conscrypt:conscrypt-android:2.5.3")
+    implementation("dev.rikka.shizuku:api:13.0.0")
+    implementation("dev.rikka.shizuku:provider:13.0.0")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

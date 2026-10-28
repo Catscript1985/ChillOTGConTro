@@ -14,14 +14,17 @@ import android.view.WindowManager
 import androidx.core.app.NotificationManagerCompat
 import com.chillotgcontro.profiles.KeyMapping
 import com.chillotgcontro.profiles.MappingProfile
+import com.chillotgcontro.shizuku.ShizukuShellBridge
+import com.chillotgcontro.shizuku.ShizukuSupport
 import io.github.muntashirakon.adb.AdbStream
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.TimeUnit
 import java.util.regex.Pattern
 
-/** User-started ADB shell bridge. Some OEM builds restrict getevent; errors are reported instead of hidden. */
+/** User-started input bridge using Wireless ADB or an explicitly authorized Shizuku UserService. */
 class AdbInputMappingService : Service() {
     private val running = AtomicBoolean(false)
     @Volatile private var eventStream: AdbStream? = null
@@ -30,7 +33,7 @@ class AdbInputMappingService : Service() {
     override fun onCreate() {
         super.onCreate()
         createChannel()
-        startForeground(NOTIFICATION_ID, notification("Đang khởi động Wireless ADB…"))
+        startForeground(NOTIFICATION_ID, notification("Đang khởi động bộ nhận phím…"))
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -47,38 +50,55 @@ class AdbInputMappingService : Service() {
     }
 
     private fun runMonitor() {
+        val runtime = getSharedPreferences("runtime", MODE_PRIVATE)
+        val shizukuMode = runtime.getBoolean("shizuku_mode", false)
         try {
             val prefs = getSharedPreferences("adb_config", MODE_PRIVATE)
-            val adb = ChillAdbConnectionManager.get(this)
-            if (!adb.isConnected) {
-                val connected = adb.connectTls(this, 20_000L)
-                if (!connected && !adb.isConnected) throw IllegalStateException("Không tự tìm thấy dịch vụ Wireless ADB. Bật Wireless debugging và ghép đôi lại.")
-            }
-            prefs.edit().putBoolean("connected", true).putString("last_status", "ADB đang theo dõi phím OTG").apply()
-            updateNotification("ADB đã kết nối · đang chờ phím OTG")
-            val stream = adb.openStream("shell:getevent -lt")
-            eventStream = stream
-            BufferedReader(InputStreamReader(stream.openInputStream(), StandardCharsets.UTF_8)).use { reader ->
+            if (shizukuMode) {
+                if (!ShizukuSupport.isReady()) throw IllegalStateException("Shizuku chưa chạy hoặc ChillOTG chưa được cấp quyền")
+                prefs.edit().putBoolean("mapping_running", true).putString("last_status", "Shizuku đang nhận phím OTG").apply()
+                updateNotification("Shizuku đã cấp quyền · đang chờ phím OTG")
+                val queue = ShizukuShellBridge.startGetevent(this)
                 while (running.get()) {
-                    val line = reader.readLine() ?: break
+                    queue.errors.poll()?.let { throw IllegalStateException(it) }
+                    val line = queue.lines.poll(300, TimeUnit.MILLISECONDS) ?: continue
                     handleEventLine(line)
                 }
+            } else {
+                val adb = ChillAdbConnectionManager.get(this)
+                if (!adb.isConnected) {
+                    val connected = adb.connectTls(this, 20_000L)
+                    if (!connected && !adb.isConnected) throw IllegalStateException("Không tự tìm thấy dịch vụ Wireless ADB. Bật Wireless debugging và ghép đôi lại.")
+                }
+                prefs.edit().putBoolean("connected", true).putString("last_status", "ADB đang theo dõi phím OTG").apply()
+                updateNotification("Wi‑Fi ADB đã kết nối · đang chờ phím OTG")
+                val stream = adb.openStream("shell:getevent -lt")
+                eventStream = stream
+                BufferedReader(InputStreamReader(stream.openInputStream(), StandardCharsets.UTF_8)).use { reader ->
+                    while (running.get()) {
+                        val line = reader.readLine() ?: break
+                        handleEventLine(line)
+                    }
+                }
+                if (running.get()) throw IllegalStateException("Lệnh getevent đã dừng. Thiết bị có thể chặn quyền đọc input event.")
             }
-            if (running.get()) throw IllegalStateException("Lệnh getevent đã dừng. Thiết bị có thể chặn quyền đọc input event.")
         } catch (t: Throwable) {
-            val detail = (t.message ?: t.javaClass.simpleName).take(130)
-            getSharedPreferences("runtime", MODE_PRIVATE).edit().putBoolean("mapping_enabled", false).putBoolean("adb_mode", false).apply()
-            getSharedPreferences("adb_config", MODE_PRIVATE).edit()
-                .putBoolean("connected", false)
-                .putBoolean("mapping_running", false)
-                .putString("last_status", "ADB input: $detail")
-                .apply()
-            updateNotification("ADB input không khả dụng: $detail")
+            if (running.get()) {
+                val detail = (t.message ?: t.javaClass.simpleName).take(130)
+                runtime.edit().putBoolean("mapping_enabled", false).putBoolean("adb_mode", false).putBoolean("shizuku_mode", false).apply()
+                val prefs = getSharedPreferences("adb_config", MODE_PRIVATE).edit()
+                    .putBoolean("mapping_running", false)
+                    .putString("last_status", "${if (shizukuMode) "Shizuku" else "ADB"} input: $detail")
+                if (!shizukuMode) prefs.putBoolean("connected", false)
+                prefs.apply()
+                updateNotification("${if (shizukuMode) "Shizuku" else "ADB"} input không khả dụng: $detail")
+            }
         } finally {
             running.set(false)
             getSharedPreferences("adb_config", MODE_PRIVATE).edit().putBoolean("mapping_running", false).apply()
             runCatching { eventStream?.close() }
             eventStream = null
+            if (shizukuMode) ShizukuShellBridge.close(this)
         }
     }
 
@@ -104,7 +124,8 @@ class AdbInputMappingService : Service() {
                 list[index] = list[index].copy(keyCode = keyCode, label = label)
             }
             MappingProfile.save(this, list, profile)
-            runtime.edit().putString("editor_state", "idle").putString("editor_result", "Đã gán phím $label qua Wi‑Fi ADB").apply()
+            val backend = if (runtime.getBoolean("shizuku_mode", false)) "Shizuku" else "Wi‑Fi ADB"
+            runtime.edit().putString("editor_state", "idle").putString("editor_result", "Đã gán phím $label qua $backend").apply()
             return
         }
         if (!runtime.getBoolean("mapping_enabled", false)) return
@@ -128,6 +149,10 @@ class AdbInputMappingService : Service() {
     }
 
     private fun injectTap(x: Int, y: Int) {
+        if (getSharedPreferences("runtime", MODE_PRIVATE).getBoolean("shizuku_mode", false)) {
+            ShizukuShellBridge.execute(this, "input", "tap", x.toString(), y.toString())
+            return
+        }
         val adb = ChillAdbConnectionManager.get(this)
         val stream = adb.openStream("shell:input tap $x $y")
         stream.use { input ->
@@ -138,6 +163,10 @@ class AdbInputMappingService : Service() {
     }
 
     private fun injectSwipe(startX: Int, startY: Int, endX: Int, endY: Int, durationMs: Int) {
+        if (getSharedPreferences("runtime", MODE_PRIVATE).getBoolean("shizuku_mode", false)) {
+            ShizukuShellBridge.execute(this, "input", "swipe", startX.toString(), startY.toString(), endX.toString(), endY.toString(), durationMs.toString())
+            return
+        }
         val adb = ChillAdbConnectionManager.get(this)
         val stream = adb.openStream("shell:input swipe $startX $startY $endX $endY $durationMs")
         stream.use { input ->
@@ -201,7 +230,7 @@ class AdbInputMappingService : Service() {
     private fun createChannel() {
         if (Build.VERSION.SDK_INT >= 26) {
             getSystemService(NotificationManager::class.java).createNotificationChannel(
-                NotificationChannel(CHANNEL_ID, "Ánh xạ phím Wi‑Fi ADB", NotificationManager.IMPORTANCE_LOW)
+                NotificationChannel(CHANNEL_ID, "Ánh xạ phím OTG", NotificationManager.IMPORTANCE_LOW)
             )
         }
     }
@@ -209,7 +238,7 @@ class AdbInputMappingService : Service() {
     private fun notification(message: String): Notification {
         val builder = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(this, CHANNEL_ID) else Notification.Builder(this)
         return builder.setSmallIcon(android.R.drawable.ic_media_play)
-            .setContentTitle("ChillOTG · ánh xạ Wi‑Fi ADB")
+            .setContentTitle("ChillOTG · ánh xạ phím OTG")
             .setContentText(message)
             .setOngoing(true)
             .build()
@@ -222,6 +251,7 @@ class AdbInputMappingService : Service() {
     private fun stopMapping() {
         running.set(false)
         runCatching { eventStream?.close() }
+        runCatching { ShizukuShellBridge.close(this) }
         worker?.interrupt()
         worker = null
         getSharedPreferences("adb_config", MODE_PRIVATE).edit().putBoolean("mapping_running", false).apply()

@@ -24,6 +24,7 @@ import android.widget.Toast
 import com.chillotgcontro.MainActivity
 import com.chillotgcontro.R
 import com.chillotgcontro.adb.AdbInputMappingService
+import com.chillotgcontro.shizuku.ShizukuSupport
 
 class FloatingBubbleService : Service() {
     private lateinit var wm: WindowManager
@@ -99,17 +100,19 @@ class FloatingBubbleService : Service() {
             val prefs = getSharedPreferences("runtime", MODE_PRIVATE)
             val next = !prefs.getBoolean("mapping_enabled", false)
             val adbReady = getSharedPreferences("adb_config", MODE_PRIVATE).getBoolean("connected", false)
-            if (next && adbReady) {
-                prefs.edit().putBoolean("mapping_enabled", true).putBoolean("adb_mode", true).apply()
+            val shizukuReady = ShizukuSupport.isReady()
+            val useShizuku = shizukuReady && (prefs.getBoolean("prefer_shizuku", false) || !adbReady)
+            if (next && (adbReady || shizukuReady)) {
+                prefs.edit().putBoolean("mapping_enabled", true).putBoolean("adb_mode", !useShizuku).putBoolean("shizuku_mode", useShizuku).apply()
                 AdbInputMappingService.start(this)
-                Toast.makeText(this, "Ánh xạ Wi‑Fi ADB đã bật", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Ánh xạ ${if (useShizuku) "Shizuku" else "Wi‑Fi ADB"} đã bật", Toast.LENGTH_SHORT).show()
                 showPanel()
             } else if (next) {
-                Toast.makeText(this, "Ghép Wi‑Fi ADB trong Cài đặt trước khi bật ánh xạ", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "Kết nối Wi‑Fi ADB hoặc khởi động Shizuku trong Cài đặt trước khi bật ánh xạ", Toast.LENGTH_LONG).show()
                 startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 dismissPanel()
             } else {
-                prefs.edit().putBoolean("mapping_enabled", false).putBoolean("adb_mode", false).apply()
+                prefs.edit().putBoolean("mapping_enabled", false).putBoolean("adb_mode", false).putBoolean("shizuku_mode", false).apply()
                 AdbInputMappingService.stop(this)
                 Toast.makeText(this, if (next) "Ánh xạ đã bật" else "Ánh xạ đã tắt", Toast.LENGTH_SHORT).show()
                 showPanel()
@@ -141,12 +144,17 @@ class FloatingBubbleService : Service() {
             startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             return
         }
+        val runtime = getSharedPreferences("runtime", MODE_PRIVATE)
         val adbReady = getSharedPreferences("adb_config", MODE_PRIVATE).getBoolean("connected", false)
-        if (adbReady) {
-            getSharedPreferences("runtime", MODE_PRIVATE).edit().putBoolean("adb_mode", true).apply()
+        val shizukuReady = ShizukuSupport.isReady()
+        if (adbReady || shizukuReady) {
+            val alreadyRunning = runtime.getBoolean("mapping_running", false)
+            val useShizuku = if (alreadyRunning) runtime.getBoolean("shizuku_mode", false)
+                else shizukuReady && (runtime.getBoolean("prefer_shizuku", false) || !adbReady)
+            runtime.edit().putBoolean("adb_mode", !useShizuku).putBoolean("shizuku_mode", useShizuku).apply()
             AdbInputMappingService.start(this)
         } else {
-            Toast.makeText(this, "Ghép Wi‑Fi ADB trong Cài đặt để nhận phím trong editor", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Kết nối Wi‑Fi ADB hoặc khởi động Shizuku trong Cài đặt để nhận phím trong editor", Toast.LENGTH_LONG).show()
             startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             return
         }
