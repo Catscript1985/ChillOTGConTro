@@ -84,13 +84,16 @@ class AdbInputMappingService : Service() {
 
     private fun handleEventLine(line: String) {
         val match = EVENT_PATTERN.matcher(line)
-        if (!match.find() || match.group(2) != "DOWN") return
+        if (!match.find()) return
+        val action = match.group(2) ?: return
+        if (action != "DOWN" && action != "REPEAT") return
         val keyCode = linuxNameToAndroid(match.group(1) ?: return) ?: return
         val runtime = getSharedPreferences("runtime", MODE_PRIVATE)
         val state = runtime.getString("editor_state", "idle") ?: "idle"
         val profile = getSharedPreferences("profiles", MODE_PRIVATE).getString("selected", "Mặc định") ?: "Mặc định"
         val list = MappingProfile.load(this, profile).toMutableList()
         if (state == "await_new_key" || state == "await_edit_key") {
+            if (action != "DOWN") return
             if (keyCode in FORBIDDEN_KEYS) return
             val label = KeyEvent.keyCodeToString(keyCode).removePrefix("KEYCODE_")
             if (state == "await_new_key") {
@@ -105,16 +108,38 @@ class AdbInputMappingService : Service() {
             return
         }
         if (!runtime.getBoolean("mapping_enabled", false)) return
-        val mapping = list.firstOrNull { it.keyCode == keyCode } ?: return
+        val mapping = list.lastOrNull { it.keyCode == keyCode } ?: return
         val (width, height) = screenSize()
-        val x = (mapping.xRatio * width).toInt().coerceIn(1, width)
-        val y = (mapping.yRatio * height).toInt().coerceIn(1, height)
-        injectTap(x, y)
+        val centerX = (mapping.xRatio * width).toInt().coerceIn(1, width)
+        val centerY = (mapping.yRatio * height).toInt().coerceIn(1, height)
+        if (mapping.controlType == "joystick") {
+            val radius = (44f * resources.displayMetrics.density).toInt().coerceAtLeast(24)
+            val (dx, dy) = when (mapping.direction) {
+                "up" -> 0 to -radius
+                "down" -> 0 to radius
+                "left" -> -radius to 0
+                "right" -> radius to 0
+                else -> return
+            }
+            injectSwipe(centerX, centerY, (centerX + dx).coerceIn(1, width), (centerY + dy).coerceIn(1, height), 280)
+        } else if (action == "DOWN") {
+            injectTap(centerX, centerY)
+        }
     }
 
     private fun injectTap(x: Int, y: Int) {
         val adb = ChillAdbConnectionManager.get(this)
         val stream = adb.openStream("shell:input tap $x $y")
+        stream.use { input ->
+            val buffer = ByteArray(256)
+            val source = input.openInputStream()
+            while (source.read(buffer) >= 0) { if (!running.get()) break }
+        }
+    }
+
+    private fun injectSwipe(startX: Int, startY: Int, endX: Int, endY: Int, durationMs: Int) {
+        val adb = ChillAdbConnectionManager.get(this)
+        val stream = adb.openStream("shell:input swipe $startX $startY $endX $endY $durationMs")
         stream.use { input ->
             val buffer = ByteArray(256)
             val source = input.openInputStream()

@@ -98,6 +98,12 @@ class FloatingBubbleService : Service() {
             }
         })
         box.addView(panelButton("⚙  Cài đặt ChillOTG") { startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); dismissPanel() })
+        box.addView(panelButton("▤  Lưu / tải keymap") {
+            startActivity(Intent(this, MainActivity::class.java)
+                .putExtra(MainActivity.EXTRA_OPEN_KEYMAP_LIBRARY, true)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP))
+            dismissPanel()
+        })
         box.addView(panelButton("Ẩn bong bóng nổi") {
             dismissPanel()
             Toast.makeText(this, "Đã tắt bong bóng · bật lại trong ChillOTG", Toast.LENGTH_SHORT).show()

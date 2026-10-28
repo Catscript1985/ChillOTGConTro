@@ -1,38 +1,40 @@
 # ChillOTGConTro
 
-Ứng dụng Android Kotlin (API 23+) để quản lý game, nhận bàn phím/tay cầm qua Wireless debugging (ADB), và ánh xạ phím sang thao tác chạm trong game. Bản 0.1.6 **không khai báo AccessibilityService**, nên không yêu cầu bật quyền Trợ năng.
+Ứng dụng Android Kotlin (API 23+) quản lý game, nhận bàn phím/tay cầm qua Wireless debugging (ADB), và ánh xạ phím sang thao tác chạm trong game. Bản 0.1.7 không khai báo AccessibilityService.
 
 ## Tính năng
 
-- Game hub dark-neon với thư viện game, chọn game đã cài và nút mở game.
-- Hồ sơ phím riêng theo game; editor nổi để thêm, kéo, đổi và xóa điểm chạm.
-- Ghép nối Wireless ADB bằng tự dò mDNS: không nhập IP/cổng; notification có ô nhập mã pairing 6 số, sau đó app tự dò dịch vụ kết nối TLS.
-- Chế độ ánh xạ đọc sự kiện phím HID qua ADB `getevent`, rồi gửi `input tap` tại tọa độ profile; chạy dưới foreground notification do người dùng bật.
-- Bong bóng nổi có menu thêm/sửa nút, bật/tắt ánh xạ và ẩn bong bóng; cài đặt có nút ngắt phiên ADB của app.
-- USB OTG/HID được Android tự nhận; app quét để hiển thị thiết bị.
+- Game hub với danh sách game cài trên máy và nút mở game.
+- Hồ sơ mapping riêng theo package game.
+- Editor nổi có nút chạm và joystick 4 hướng dạng vòng tròn; có thể kéo để đặt lại, chọn từng hướng để đổi phím.
+- Thanh editor có **Lưu**, **Chia sẻ** keymap JSON và **Nhập keymap** từ tệp.
+- Thư viện keymap: lưu preset có tên, tải một preset vào game đang chọn, chia sẻ/xóa preset và nhập JSON; có thể mở từ tab Điều khiển hoặc menu bong bóng nổi.
+- Ghép nối Wireless ADB tự dò mDNS, không cần nhập IP/cổng; notification có ô nhập mã pairing 6 số.
+- ADB `getevent` nhận phím HID và gửi `input tap`/`input swipe`; tiến trình chạy dưới foreground notification do người dùng khởi động.
+- Bong bóng nổi có menu thêm/sửa nút, bật/tắt mapping, mở thư viện keymap và ẩn bong bóng.
 
-## Cách ghép nối và dùng
+## Ghép nối và sử dụng
 
 1. Trên Android 11 trở lên, kết nối điện thoại với Wi‑Fi tin cậy, mở **Tùy chọn nhà phát triển → Wireless debugging** và bật tính năng.
 2. Cho phép quyền **Thông báo** và **Thiết bị ở gần** nếu Android yêu cầu. Trong ChillOTGConTro → **Cài đặt → Bắt đầu ghép nối tự động**.
-3. Trong Tùy chọn nhà phát triển bật **Wireless debugging**, rồi mở **Pair device with pairing code**. ChillOTG dò endpoint mDNS trên chính điện thoại và gửi notification khi sẵn sàng.
-4. Mở rộng notification, nhập mã 6 số đang hiện trên Android. Không nhập IP hay cổng; sau pairing, app tự dò và kết nối dịch vụ TLS ADB.
-5. Chờ thông báo báo đã ghép đôi/kết nối. Vào **Trò chơi**, chọn game, cấp quyền cửa sổ nổi và bấm **Chơi ngay**.
-6. Trong game, chạm bong bóng G → **Thêm nút phím** → **+ Thêm nút** → chạm vị trí → bấm phím OTG. Chạm/kéo nút để chỉnh; bật ánh xạ để dùng.
-7. Muốn dừng, tắt ánh xạ trong menu nổi hoặc app. **Ngắt phiên ADB của ChillOTG** đóng kết nối của ứng dụng; Android vẫn có thể giữ thiết bị trong danh sách đã ghép đôi. Muốn thu hồi hoàn toàn, tắt Wireless debugging hoặc xóa thiết bị ghép đôi trong Developer options.
+3. Mở **Pair device with pairing code** trong Wireless debugging. ChillOTG tự dò dịch vụ và gửi notification; nhập mã 6 số trong notification.
+4. Chọn game, cấp quyền cửa sổ nổi và mở game. Chạm bong bóng G → **Thêm nút phím** → **+ Thành phần**.
+5. Chọn **Nút chạm** để đặt một điểm rồi nhấn phím OTG; hoặc chọn **Joystick WASD**, chạm vị trí tâm vòng tròn. Joystick mặc định dùng W/A/S/D; chạm hướng cần đổi rồi dùng thao tác đổi phím trong editor nếu cần.
+6. Kéo nút hoặc cả vòng joystick để căn vị trí, bấm **Lưu**. **Chia sẻ** gửi keymap JSON; **Nhập keymap** mở bộ chọn tệp. Để tái sử dụng cho game khác, mở **Lưu / tải keymap** từ tab Điều khiển hoặc menu bong bóng, lưu với tên dễ nhớ rồi chọn **Tải cho game** ở game đích.
+7. Tắt mapping khi muốn dừng. Ngắt phiên ADB trong Cài đặt sẽ đóng kết nối của ứng dụng; Android có thể vẫn giữ thiết bị trong danh sách đã ghép đôi.
 
 ## Giới hạn quan trọng
 
-ADB pairing chỉ hỗ trợ Android có Wireless debugging (thường Android 11+). USB debugging có dây không cung cấp quyền ADB cho app Android trên chính điện thoại; cần bật Wireless debugging để ghép đôi. Tự dò dùng mDNS và có thể không hoạt động nếu ROM/router chặn mDNS hoặc Wireless debugging chưa mở màn hình Pair device. Một số hãng/ROM không cho tiến trình `shell` đọc `getevent`; khi đó app sẽ báo lỗi và tắt mapping. Bản này cố ý không xin quyền Trợ năng.
+Wireless ADB yêu cầu Android có Wireless debugging (thường Android 11+); USB debugging có dây không cấp quyền ADB hệ thống cho app Android đang chạy trên chính điện thoại. Tự dò dùng mDNS và có thể không hoạt động nếu ROM/router chặn mDNS. Một số ROM không cho shell đọc `getevent`.
 
-Phím vật lý gốc có thể vẫn được game nhận song song với tap tổng hợp; một số game chặn thao tác chạm tổng hợp hoặc không tương thích overlay. Tính năng hiện tại gửi tap đơn, chưa hỗ trợ giữ chạm, ánh xạ chuột/camera FPS, hay đảm bảo hoạt động với mọi game/thiết bị. Chỉ dùng trên thiết bị/game bạn có quyền sử dụng và tuân theo điều khoản của game.
+Joystick hiện phát một **swipe ngắn 280 ms** từ tâm ra hướng tương ứng mỗi lần nhận phím nhấn/lặp. Đây không phải joystick analog liên tục/giữ chạm; cách game phản hồi phụ thuộc game và ROM. Nút chạm phát tap đơn. Phím vật lý gốc có thể đồng thời được game nhận, một số game chặn thao tác tổng hợp hoặc overlay, và app không đảm bảo tương thích với mọi trò chơi. Chỉ dùng trên thiết bị/game bạn có quyền sử dụng và tuân theo điều khoản của game.
 
 ## Cài đặt và cập nhật APK
 
-- Bản phát hành ổn định: tải **ChillOTGConTro-v0.1.6.apk** từ GitHub Release `v0.1.6`.
-- Nếu đã cài bản release trước, bản mới giữ cùng `applicationId` và khóa ký ổn định để Android cập nhật đè. Không cài đè APK debug do GitHub Actions ký tạm; gỡ bản debug trước (việc gỡ có thể xóa dữ liệu cục bộ).
-- Nếu Android báo “Ứng dụng chưa được cài đặt”, kiểm tra dung lượng/tệp tải đủ, bật **Cài ứng dụng không rõ nguồn gốc** cho trình quản lý tệp đang mở APK, và gỡ bản cùng package có chữ ký khác. Thiết bị cần Android 6.0+.
-- Bản 0.1.6 không khai báo AccessibilityService. Google Play Protect vẫn có thể cảnh báo APK sideload vì đây là app chưa được phân phối/đánh giá qua Play; thay đổi này không bảo đảm mọi thiết bị đều bỏ cảnh báo. Không tắt Play Protect để né cảnh báo.
+- Bản phát hành ổn định: `ChillOTGConTro-v0.1.7.apk` trong GitHub Release `v0.1.7`.
+- Bản mới giữ `applicationId` và khóa ký ổn định để cập nhật đè bản Release trước. Không cài đè APK debug do GitHub Actions ký tạm; gỡ bản debug trước (việc gỡ có thể xóa dữ liệu cục bộ).
+- Nếu Android báo “Ứng dụng chưa được cài đặt”, kiểm tra tệp tải đủ, quyền **Cài ứng dụng không rõ nguồn gốc** cho trình quản lý tệp và xung đột chữ ký.
+- Play Protect có thể cảnh báo APK sideload chưa được phân phối/đánh giá qua Play. Không tắt Play Protect để né cảnh báo.
 
 ## Build
 
@@ -42,4 +44,4 @@ Phím vật lý gốc có thể vẫn được game nhận song song với tap t
 
 APK debug: `app/build/outputs/apk/debug/app-debug.apk`.
 
-Để ký Release, truyền các biến môi trường `ANDROID_KEYSTORE_PATH`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_PASSWORD`, `ANDROID_KEY_ALIAS` (mặc định `chillotgcontro`) và dùng đúng khóa riêng đã phát hành. Không commit keystore/mật khẩu lên repository. GitHub Actions tạo artifact **debug** để kiểm tra; dùng GitHub Release để cài/cập nhật bản stable.
+Để ký Release, truyền `ANDROID_KEYSTORE_PATH`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_PASSWORD`, `ANDROID_KEY_ALIAS` (mặc định `chillotgcontro`) bằng khóa riêng đã phát hành. Không commit keystore/mật khẩu lên repository. GitHub Actions tạo artifact debug để kiểm tra; dùng GitHub Release để cài/cập nhật bản stable.

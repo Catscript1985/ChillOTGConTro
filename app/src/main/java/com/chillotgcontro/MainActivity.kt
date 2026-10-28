@@ -15,13 +15,17 @@ import android.widget.ImageView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -58,6 +62,11 @@ private object KeyCaptureBridge {
 }
 
 class MainActivity : ComponentActivity() {
+    companion object {
+        const val EXTRA_OPEN_KEYMAP_LIBRARY = "open_keymap_library"
+        const val EXTRA_IMPORT_KEYMAP_NOW = "import_keymap_now"
+    }
+
     override fun dispatchKeyEvent(event: AndroidKeyEvent): Boolean {
         if (event.action == AndroidKeyEvent.ACTION_DOWN && event.repeatCount == 0 && KeyCaptureBridge.onKeyCaptured?.invoke(event.keyCode) == true) return true
         return super.dispatchKeyEvent(event)
@@ -82,6 +91,9 @@ private fun ChillHome() {
     val runtime = remember { context.getSharedPreferences("runtime", Context.MODE_PRIVATE) }
 
     var tab by remember { mutableStateOf(HomeTab.GAMES) }
+    val openKeymapOnLaunch = remember { (context as? Activity)?.intent?.getBooleanExtra(MainActivity.EXTRA_OPEN_KEYMAP_LIBRARY, false) == true }
+    var showKeymapLibrary by remember { mutableStateOf(openKeymapOnLaunch) }
+    var importKeymapOnLaunch by remember { mutableStateOf((context as? Activity)?.intent?.getBooleanExtra(MainActivity.EXTRA_IMPORT_KEYMAP_NOW, false) == true) }
     var games by remember { mutableStateOf(InstalledGames.list(context)) }
     var favoritePackages by remember {
         val saved = prefs.getStringSet("selected_games", null)?.toSet()
@@ -99,6 +111,13 @@ private fun ChillHome() {
     var showGamePicker by remember { mutableStateOf(false) }
     var showAdbGuide by remember { mutableStateOf(false) }
     var keyCaptureIndex by remember { mutableStateOf<Int?>(null) }
+
+    LaunchedEffect(openKeymapOnLaunch, importKeymapOnLaunch) {
+        if (openKeymapOnLaunch || importKeymapOnLaunch) {
+            tab = HomeTab.CONTROLS
+            showKeymapLibrary = true
+        }
+    }
 
     val selectedGame = games.firstOrNull { it.packageName == selectedPackage }
     val myGames = games.filter { it.packageName in favoritePackages }
@@ -231,7 +250,8 @@ private fun ChillHome() {
                     }
                 },
                 onRefreshAdb = { adbConnected = context.getSharedPreferences("adb_config", Context.MODE_PRIVATE).getBoolean("connected", false) },
-                onResetMappings = { mappings = MappingProfile.defaults(); MappingProfile.save(context, mappings, profile) }
+                onResetMappings = { mappings = MappingProfile.defaults(); MappingProfile.save(context, mappings, profile) },
+                onManageKeymaps = { showKeymapLibrary = true }
             )
             HomeTab.SETTINGS -> SettingsScreen(
                 modifier = Modifier.padding(inner),
@@ -263,6 +283,19 @@ private fun ChillHome() {
         onToggle = { game -> toggleFavorite(game) },
         onSelect = { game -> chooseGame(game); showGamePicker = false },
         onDismiss = { showGamePicker = false }
+    )
+
+    if (showKeymapLibrary) KeymapLibraryDialog(
+        profile = profile,
+        mappings = mappings,
+        autoOpenImport = importKeymapOnLaunch,
+        onImportLaunched = { importKeymapOnLaunch = false },
+        onApply = { loaded ->
+            mappings = loaded
+            MappingProfile.save(context, loaded, profile, synchronous = true)
+            Toast.makeText(context, "Đã tải keymap cho game này", Toast.LENGTH_SHORT).show()
+        },
+        onDismiss = { showKeymapLibrary = false }
     )
 
     if (showAdbGuide) AlertDialog(
@@ -385,7 +418,8 @@ private fun ControlsScreen(
     onCaptureKey: (Int) -> Unit,
     onEditOverlay: () -> Unit,
     onRefreshAdb: () -> Unit,
-    onResetMappings: () -> Unit
+    onResetMappings: () -> Unit,
+    onManageKeymaps: () -> Unit
 ) {
     LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
@@ -406,7 +440,7 @@ private fun ControlsScreen(
                     Button(onClick = onEditOverlay, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(15.dp)) {
                         Text("MỞ GAME + BONG BÓNG", fontWeight = FontWeight.Bold)
                     }
-                    Text("Trong game: chạm bong bóng G → Thêm nút phím / Sửa nút. Chạm vị trí, bấm phím OTG, rồi kéo nút để căn chỉnh.", color = TextMuted, fontSize = 11.sp)
+                    Text("Trong game: bong bóng G → Thêm nút phím → + Thành phần. Chọn nút chạm hoặc joystick WASD; chạm hướng để đổi phím, kéo để căn vị trí rồi Lưu.", color = TextMuted, fontSize = 11.sp)
                 }
             }
         }
@@ -419,6 +453,11 @@ private fun ControlsScreen(
                     }
                     Switch(checked = mappingEnabled, onCheckedChange = { onToggleMapping() })
                 }
+            }
+        }
+        item {
+            OutlinedButton(onClick = onManageKeymaps, modifier = Modifier.fillMaxWidth()) {
+                Text("LƯU / TẢI KEYMAP CHO GAME NÀY", color = Aqua)
             }
         }
         item {
@@ -438,7 +477,7 @@ private fun ControlsScreen(
                         Text(map.label.take(4), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Black, maxLines = 1)
                     }
                     Column(Modifier.weight(1f)) {
-                        Text("${map.label}  →  chạm", color = TextMain, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                        Text("${map.label}  →  ${if (map.controlType == "joystick") "joystick ${map.direction}" else "chạm"}", color = TextMain, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                         Text("Vị trí ${ (map.xRatio * 100).toInt() }% · ${ (map.yRatio * 100).toInt() }%", color = TextMuted, fontSize = 10.sp)
                     }
                     OutlinedButton(onClick = { onCaptureKey(index) }, contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)) {
@@ -513,7 +552,7 @@ private fun SettingsScreen(
         }
         item {
             TextButton(onClick = onAdbGuide, modifier = Modifier.fillMaxWidth()) { Text("Hướng dẫn OTG / Wi‑Fi ADB", color = TextMuted) }
-            Text("ChillOTGConTro  ·  0.1.6", color = TextMuted, fontSize = 10.sp, modifier = Modifier.fillMaxWidth())
+            Text("ChillOTGConTro  ·  0.1.7", color = TextMuted, fontSize = 10.sp, modifier = Modifier.fillMaxWidth())
         }
     }
 }
@@ -696,4 +735,106 @@ private fun navColors() = NavigationBarItemDefaults.colors(
 private fun startFloatingBubble(context: Context) {
     val intent = Intent(context, FloatingBubbleService::class.java)
     if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(intent) else context.startService(intent)
+}
+
+
+@Composable
+private fun KeymapLibraryDialog(
+    profile: String,
+    mappings: List<KeyMapping>,
+    autoOpenImport: Boolean,
+    onImportLaunched: () -> Unit,
+    onApply: (List<KeyMapping>) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    var presetName by remember(profile) { mutableStateOf(profile.takeLast(30).ifBlank { "Keymap mới" }) }
+    var presets by remember { mutableStateOf(MappingProfile.presets(context)) }
+    val importPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            val raw = runCatching { context.contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() } }.getOrNull()
+            val imported = raw?.let { MappingProfile.importJson(context, it, profile) }
+            if (imported != null) {
+                onApply(imported)
+                Toast.makeText(context, "Keymap đã nhập và áp dụng cho game hiện tại", Toast.LENGTH_LONG).show()
+            } else Toast.makeText(context, "Không đọc được keymap JSON hợp lệ", Toast.LENGTH_LONG).show()
+        }
+    }
+    LaunchedEffect(autoOpenImport) {
+        if (autoOpenImport) {
+            importPicker.launch(arrayOf("application/json", "text/plain"))
+            onImportLaunched()
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Thư viện keymap") },
+        text = {
+            Column(
+                Modifier.fillMaxWidth().heightIn(max = 560.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text("Game hiện tại: ${profile.takeLast(38)} · ${mappings.size} thành phần", color = TextMuted, fontSize = 11.sp)
+                OutlinedTextField(
+                    value = presetName,
+                    onValueChange = { presetName = it.take(48) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("Tên cấu hình để lưu") },
+                    placeholder = { Text("Ví dụ: PUBG · 4 ngón") }
+                )
+                Button(onClick = {
+                    if (MappingProfile.savePreset(context, presetName, profile, mappings)) {
+                        presets = MappingProfile.presets(context)
+                        Toast.makeText(context, "Đã lưu keymap ‘${presetName.trim()}’", Toast.LENGTH_SHORT).show()
+                    } else Toast.makeText(context, "Nhập tên cấu hình trước khi lưu", Toast.LENGTH_SHORT).show()
+                }, modifier = Modifier.fillMaxWidth()) { Text("LƯU KEYMAP HIỆN TẠI") }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { importPicker.launch(arrayOf("application/json", "text/plain")) }, modifier = Modifier.weight(1f)) { Text("Nhập JSON") }
+                    OutlinedButton(onClick = {
+                        val send = Intent(Intent.ACTION_SEND).apply {
+                            type = "application/json"
+                            putExtra(Intent.EXTRA_SUBJECT, "ChillOTG keymap · $profile")
+                            putExtra(Intent.EXTRA_TEXT, MappingProfile.exportJson(profile, mappings))
+                        }
+                        context.startActivity(Intent.createChooser(send, "Chia sẻ keymap"))
+                    }, modifier = Modifier.weight(1f)) { Text("Chia sẻ") }
+                }
+                Text("CẤU HÌNH ĐÃ LƯU", color = TextMain, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                if (presets.isEmpty()) Text("Chưa có preset. Lưu cấu hình hiện tại để dùng lại cho game khác.", color = TextMuted, fontSize = 12.sp)
+                presets.forEach { preset ->
+                    Card(shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = Panel)) {
+                        Column(Modifier.fillMaxWidth().padding(11.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                            Text(preset.name, color = TextMain, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("Nguồn: ${preset.sourceProfile.takeLast(30)} · ${preset.mappings.size} thành phần", color = TextMuted, fontSize = 10.sp)
+                            Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                                Button(onClick = {
+                                    val loaded = MappingProfile.applyPreset(context, preset.id, profile)
+                                    if (loaded != null) {
+                                        onApply(loaded)
+                                        Toast.makeText(context, "Đã tải ‘${preset.name}’ vào game này", Toast.LENGTH_SHORT).show()
+                                        onDismiss()
+                                    }
+                                }, modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)) { Text("Tải cho game", fontSize = 10.sp) }
+                                OutlinedButton(onClick = {
+                                    val send = Intent(Intent.ACTION_SEND).apply {
+                                        type = "application/json"
+                                        putExtra(Intent.EXTRA_SUBJECT, "ChillOTG keymap · ${preset.name}")
+                                        putExtra(Intent.EXTRA_TEXT, MappingProfile.exportJson(preset.sourceProfile, preset.mappings))
+                                    }
+                                    context.startActivity(Intent.createChooser(send, "Chia sẻ ${preset.name}"))
+                                }, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)) { Text("Chia sẻ", fontSize = 10.sp) }
+                                TextButton(onClick = {
+                                    MappingProfile.deletePreset(context, preset.id)
+                                    presets = MappingProfile.presets(context)
+                                }, contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)) { Text("Xóa", color = Amber, fontSize = 10.sp) }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Đóng") } }
+    )
 }
